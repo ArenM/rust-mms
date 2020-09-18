@@ -1,0 +1,10 @@
+[package]
+name = "rust-mmsd"
+version = "0.1.0"
+authors = ["ArenM <aren@peacevolution.org>"]
+edition = "2018"
+
+[workspace]
+members = ["mms-parser"]
+
+[dependencies]

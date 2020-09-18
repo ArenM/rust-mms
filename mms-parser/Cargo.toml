@@ -1,0 +1,12 @@
+[package]
+name = "mms-parser"
+version = "0.1.0"
+authors = ["ArenM <aren@peacevolution.org>"]
+edition = "2018"
+
+[lib]
+name = "mms_parser"
+
+[dependencies]
+clap = "2.33.3"
+nom = "5.1.2"
