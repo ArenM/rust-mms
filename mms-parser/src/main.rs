@@ -4,6 +4,8 @@ use clap::{App, Arg};
 use std::{fs::File, io::Read, path::PathBuf};
 
 fn main() {
+    env_logger::init();
+
     let matches = App::new("MMS Notification Parser")
         .arg(
             Arg::with_name("file")
