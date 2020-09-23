@@ -1,32 +1,41 @@
+mod helpers;
 mod types;
 
+use helpers::{null_delimited, tag_null, u8_to_string};
 use types::read_uintvar;
-use types:: {Wap, PduType, PushMessageBody};
+use types::{PduType, PushMessageBody, Wap};
 
-use nom::number::complete::be_u8;
-use nom::IResult;
+#[macro_use]
+extern crate nom;
 
-pub fn parse_data(data: &[u8]) -> IResult<&[u8], Wap> {
-    // TODO: This should ONLY be red in "connectionless PDUs"
-    let (r, tid) = be_u8(data)?;
+use nom::{do_parse, named, number::complete::be_u8};
 
-    // TODO: Convert this to an enum based on table 34 in assigned numbers from
-    // wap-230-wsp-20010705-a.pdf
-    let (r, message_type) = be_u8(r)?;
-    let (r, body) = parse_message_body(r, PduType::from(message_type))?;
+named!(pub parse_data<Wap>,
+    do_parse!(
+        // TODO: This should ONLY be red in "connectionless PDUs"
+        tid: be_u8 >>
+        message_type: be_u8 >>
+        body: parse_message_body >>
+        (Wap {
+                transaction_id: tid,
+                message_type: PduType::from(message_type),
+                body,
+        })
+    )
+);
 
-    Ok((
-        r,
-        Wap {
-            transaction_id: tid,
-            message_type: PduType::from(message_type),
-            body
-        },
-    ))
-}
-
-// TODO: PushMessageBody is all I care about for now, but this should be fixed
-fn parse_message_body(d: &[u8], _message_type: PduType) -> IResult<&[u8], PushMessageBody> {
-    let (d, header_length) = read_uintvar(d)?;
-    Ok((d, PushMessageBody { header_length}))
-}
+named!(pub parse_message_body<PushMessageBody>,
+    do_parse!(
+        header_length:  read_uintvar    >>
+        content_type:   null_delimited  >>
+        tag_null >>
+        some_number:    read_uintvar    >>
+        string:         null_delimited  >>
+        (PushMessageBody {
+            header_length,
+            content_type: u8_to_string(content_type),
+            random_number: some_number,
+            string: u8_to_string(string),
+        })
+    )
+);

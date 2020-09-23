@@ -63,5 +63,8 @@ impl From<u8> for PduType {
 #[derive(Debug)]
 pub struct PushMessageBody {
     pub header_length: usize,
+    pub content_type: String,
+    pub random_number: usize,
+    pub string: String,
 }
 
