@@ -1,1 +1,7 @@
-/target
+target
+spec
+test-data
+shell.nix
+.envrc
+*.bin
+mutagen*
