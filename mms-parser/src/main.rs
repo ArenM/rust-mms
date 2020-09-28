@@ -1,27 +1,20 @@
 use mms_parser::parse_data;
-use clap::{App, Arg};
 
 use std::{fs::File, io::Read, path::PathBuf};
 
-fn main() {
-    env_logger::init();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: add command line / environment variable options
+    // for with_level, and with_module_level
+    simple_logger::SimpleLogger::new().init().unwrap();
 
-    let matches = App::new("MMS Notification Parser")
-        .arg(
-            Arg::with_name("file")
-                .help("Binary file containing mms notification")
-                .required(true)
-                .value_name("FILE")
-                .index(1)
-                .takes_value(true),
-        )
-        .get_matches();
+    let mut args = pico_args::Arguments::from_env();
+    let path: String = args.value_from_str("--file")?;
 
-    let path = matches.value_of("file").unwrap();
     let data = read_file(&path.into()).unwrap();
 
     let parsed = parse_data(&data).unwrap();
-    println!("Parsed: {:?}", parsed)
+    println!("Parsed: {:?}", parsed);
+    Ok(())
 }
 
 fn read_file(path: &PathBuf) -> std::io::Result<Vec<u8>> {
