@@ -12,8 +12,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let data = read_file(&path.into()).unwrap();
 
-    let parsed = parse_data(&data).unwrap();
-    println!("Parsed: {:?}", parsed);
+    let parsed = parse_data(&data).unwrap().1;
+    println!("Parsed: {:#?}", parsed);
+
+    let parsed_body = parse_data(&parsed.body).unwrap().1;
+    println!("Parsed Body: {:#?}", parsed_body);
+
     Ok(())
 }
 

@@ -12,6 +12,7 @@ pub struct Wap {
     pub message_type: PduType,
     pub content_type: String,
     pub headers: Vec<MessageHeader>,
+    pub body: Vec<u8>,
 }
 
 #[derive(Debug)]
