@@ -1,13 +1,17 @@
-pub mod uintvar;
+pub mod message_header;
 
-pub use uintvar::*;
+pub use message_header::*;
 use PduType::*;
+
+// use enum_primitive_derive::Primitive;
+// use num_enum::IntoPrimitive;
 
 #[derive(Debug)]
 pub struct Wap {
     pub transaction_id: u8,
     pub message_type: PduType,
-    pub body: PushMessageBody,
+    pub content_type: String,
+    pub headers: Vec<MessageHeader>,
 }
 
 #[derive(Debug)]
@@ -32,6 +36,8 @@ pub enum PduType {
     Unknown(u8),
 }
 
+// TODO: Move the numbers in this match to the enum definition
+// and write From<u8>, and possibly Into<u8> with a macro
 impl From<u8> for PduType {
     fn from(t: u8) -> Self {
         match t {
@@ -59,12 +65,3 @@ impl From<u8> for PduType {
         }
     }
 }
-
-#[derive(Debug)]
-pub struct PushMessageBody {
-    pub header_length: usize,
-    pub content_type: String,
-    pub random_number: usize,
-    pub string: String,
-}
-

@@ -11,4 +11,7 @@ name = "mms_parser"
 clap = "2.33.3"
 nom = "5.1.2"
 log = "0.4.11"
+num-bigint = "0.3"
+
+# TODO: this is only needed for the bin target
 env_logger = "0.7.1"

@@ -1,41 +1,47 @@
 mod helpers;
+mod parser;
 mod types;
-
-use helpers::{null_delimited, tag_null, u8_to_string};
-use types::read_uintvar;
-use types::{PduType, PushMessageBody, Wap};
 
 #[macro_use]
 extern crate nom;
 
-use nom::{do_parse, named, number::complete::be_u8};
+use helpers::{null_delimited, u8_to_string};
+use parser::{header_item, read_uintvar};
+use types::{MessageHeader, PduType, Wap};
+
+use nom::{
+    bytes::complete::take, combinator::complete, do_parse, multi::many0, named,
+    number::complete::be_u8, IResult,
+};
 
 named!(pub parse_data<Wap>,
     do_parse!(
         // TODO: This should ONLY be red in "connectionless PDUs"
-        tid: be_u8 >>
+        transaction_id: be_u8 >>
         message_type: be_u8 >>
-        body: parse_message_body >>
+        message_headers: parse_message >>
         (Wap {
-                transaction_id: tid,
+                transaction_id,
                 message_type: PduType::from(message_type),
-                body,
+                content_type: message_headers.0,
+                headers: message_headers.1,
         })
     )
 );
 
-named!(pub parse_message_body<PushMessageBody>,
-    do_parse!(
-        header_length:  read_uintvar    >>
-        content_type:   null_delimited  >>
-        tag_null >>
-        some_number:    read_uintvar    >>
-        string:         null_delimited  >>
-        (PushMessageBody {
-            header_length,
-            content_type: u8_to_string(content_type),
-            random_number: some_number,
-            string: u8_to_string(string),
-        })
-    )
-);
+pub fn parse_message(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
+    let (d, header_length) = read_uintvar(d)?;
+    let (d, header_content) = take(header_length)(d)?;
+    let (_, (content_type, headers)) = complete(message_header)(header_content)?;
+
+    Ok((d, (u8_to_string(content_type), headers)))
+}
+
+fn message_header(d: &[u8]) -> IResult<&[u8], (&[u8], Vec<MessageHeader>)> {
+    // TODO: This is very case specific, fix it
+    let (d, _short_content_type) = take(2u8)(d)?;
+    let (d, content_type) = null_delimited(d)?;
+    let (d, headers) = many0(header_item)(d)?;
+
+    Ok((d, (content_type, headers)))
+}

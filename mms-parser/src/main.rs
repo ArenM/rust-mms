@@ -20,7 +20,7 @@ fn main() {
     let path = matches.value_of("file").unwrap();
     let data = read_file(&path.into()).unwrap();
 
-    let parsed = parse_data(&data);
+    let parsed = parse_data(&data).unwrap();
     println!("Parsed: {:?}", parsed)
 }
 
