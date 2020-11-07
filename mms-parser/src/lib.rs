@@ -37,12 +37,6 @@ fn take_all(d: &[u8]) -> IResult<&[u8], Vec<u8>> {
 
 fn parse_message(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
     let (d, header_length) = read_uintvar(d)?;
-    let header_length = if header_length > u32::MAX.into() {
-        // TODO: use a softer error here
-        panic!("Message too large to process")
-    } else {
-        header_length.to_u32_digits()[0]
-    };
     let (d, header_content) = take(header_length)(d)?;
     let (_, (content_type, headers)) = complete(message_headers)(header_content)?;
 
