@@ -13,9 +13,14 @@ path = "src/main.rs"
 
 [dependencies]
 pico-args = "0.3.4"
-nom = "6.0.0"
-log = "0.4.11"
-multimap = "0.8.2"
 
-# TODO: this is only needed for the bin target
-simple_logger = "1.9.0"
+[dependencies.multimap]
+version = "0.8.2"
+default-features = false
+features = []
+
+[dependencies.nom]
+version = "6.0.0"
+default-features = false
+features = ["std"]
+

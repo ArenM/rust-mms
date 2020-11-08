@@ -52,6 +52,7 @@ impl From<u8> for PduType {
 }
 
 #[derive(Debug)]
+// TODO: This needs a better name
 pub struct VndWapMmsMessage {
     headers: MultiMap<MmsHeader, MmsHeaderValue>,
 }

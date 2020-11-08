@@ -1,8 +1,12 @@
 use crate::header_fields;
 use std::convert::TryFrom;
 
+use super::VndWapMmsMessage;
 use crate::parser::*;
 use nom::{bytes::complete::take, IResult};
+
+type ShortUint = u8;
+type LongUint = u64;
 
 // TODO: parse all variants so this isn't necessary
 #[derive(Debug)]
@@ -10,9 +14,9 @@ pub enum MmsHeaderValue {
     LongUint(u64),
     ShortUint(u8),
     String(String),
-    Expiry(ExpiryField),
-    MessageClass(ClassIdentifier),
-    MessageType(MessageTypeField),
+    ExpiryField(ExpiryField),
+    ClassIdentifier(ClassIdentifier),
+    MessageTypeField(MessageTypeField),
 }
 
 impl From<String> for MmsHeaderValue {
@@ -23,7 +27,7 @@ impl From<String> for MmsHeaderValue {
 
 impl From<ExpiryField> for MmsHeaderValue {
     fn from(d: ExpiryField) -> Self {
-        Self::Expiry(d)
+        Self::ExpiryField(d)
     }
 }
 
@@ -41,13 +45,13 @@ impl From<u8> for MmsHeaderValue {
 
 impl From<ClassIdentifier> for MmsHeaderValue {
     fn from(d: ClassIdentifier) -> Self {
-        Self::MessageClass(d)
+        Self::ClassIdentifier(d)
     }
 }
 
 impl From<MessageTypeField> for MmsHeaderValue {
     fn from(d: MessageTypeField) -> Self {
-        Self::MessageType(d)
+        Self::MessageTypeField(d)
     }
 }
 
@@ -86,7 +90,7 @@ header_fields! {
     // (Content);
     // (ContentType);
     // (Date);
-    (From, 0x09, |d| {
+    (From, from, String, 0x09, |d| {
         let (d, len) = parse_value_length(d)?;
         let (d, value) = take(len)(d)?;
 
@@ -116,13 +120,13 @@ header_fields! {
     // (XMmsCancelID);
     // (XMmsCancelStatus);
     // (XMmsContentClass);
-    (XMmsContentLocation, 0x03, |d| parse_text_string(d));
+    (XMmsContentLocation, x_mms_content_location, String, 0x03, |d| parse_text_string(d));
     // (XMmsDRMContent);
     // (XMmsDeliveryReport);
     // (XMmsDeliveryTime);
     // (XMmsDistributionIndicator);
     // (XMmsElementDescriptor);
-    (XMmsExpiry, 0x08, |d| {
+    (XMmsExpiry, x_mms_expiry, ExpiryField, 0x08, |d| {
         let (d, len) = parse_value_length(d)?;
         let (d, value) = take(len)(d)?;
 
@@ -147,15 +151,15 @@ header_fields! {
     });
     // (XMmsLimit);
     // (XMmsMMFlags);
-    (XMmsMMSVersion, 0x0D, |d| parse_short_integer(d));
+    (XMmsMMSVersion, x_mms_mms_version, ShortUint, 0x0D, |d| parse_short_integer(d));
     // (XMmsMMState);
     // (XMmsMboxQuotas);
     // (XMmsMboxTotals);
-    (XMmsMessageClass, 0x0A, |d| nom::branch::alt((parse_enum_class, parse_string_class))(d));
+    (XMmsMessageClass, x_mms_message_class, ClassIdentifier, 0x0A, |d| nom::branch::alt((parse_enum_class, parse_string_class))(d));
     // (XMmsMessageCount);
-    (XMmsMessageSize, 0x0E, |d| parse_long_integer(d));
+    (XMmsMessageSize, x_mms_message_size, LongUint, 0x0E, |d| parse_long_integer(d));
     // I don't know why the compiler insists that this one needs type annotations
-    (XMmsMessageType, 0x0C, |d| -> IResult<&[u8], MessageTypeField> {
+    (XMmsMessageType, x_mms_message_type, MessageTypeField, 0x0C, |d| -> IResult<&[u8], MessageTypeField> {
         let (d, message_type) = take(1u8)(d)?;
         Ok((
                 d,
@@ -190,7 +194,7 @@ header_fields! {
     // (XMmsStoreStatusText);
     // (XMmsStored);
     // (XMmsTotals);
-    (XMmsTransactionId, 0x18, |d| { parse_text_string(d) })
+    (XMmsTransactionId, x_mms_transaction_id, String, 0x18, |d| parse_text_string(d))
 }
 
 #[derive(Debug)]

@@ -1,4 +1,3 @@
-use log::{debug, trace};
 use nom::bytes::complete::take;
 use nom::IResult;
 
@@ -17,12 +16,9 @@ pub fn read_uintvar(d: &[u8]) -> IResult<&[u8], u64> {
 
         nums.push(value);
         d = nd;
-
-        trace!("carry, nums: {}, {:?}", carry, nums);
     }
 
     let value = tally_u7_nums(&nums);
-    debug!("value: {}", value);
 
     Ok((d, value))
 }

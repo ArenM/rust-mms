@@ -1,5 +1,4 @@
 use crate::types::{MessageHeader, MessageHeader::*};
-use log::error;
 use nom::{bytes::complete::take, IResult};
 
 pub fn header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
@@ -27,7 +26,7 @@ pub fn header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
             if cfg!(debug_assertions) {
                 unimplemented!("No known variant for type {:#04X}", b);
             } else {
-                error!("No known variant for type {:#04X}, Skiping rest of Header", b);
+                println!("No known variant for type {:#04X}, Skiping rest of Header", b);
                 let d: &[u8] = &[];
                 (d, UnknownHeader(b))
             }

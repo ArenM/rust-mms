@@ -5,7 +5,7 @@ use std::{fs::File, io::Read, path::PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: add command line / environment variable options
     // for with_level, and with_module_level
-    simple_logger::SimpleLogger::new().init().unwrap();
+    // simple_logger::SimpleLogger::new().init().unwrap();
 
     let mut args = pico_args::Arguments::from_env();
     let path: String = args.value_from_str("--file")?;

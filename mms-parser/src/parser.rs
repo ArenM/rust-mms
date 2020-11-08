@@ -12,11 +12,11 @@ use nom::{
 
 #[macro_export]
 macro_rules! header_fields {
-    ($n:ident, $(($e:ident, $bin:expr, $parse:expr));+$(;)*) => {
+    ($name:ident, $(($camel_name:ident, $under_name:ident, $type:ident, $binary_code:expr, $parse:expr));+$(;)*) => {
         #[derive(Debug, Hash, PartialEq, Eq)]
-        pub enum $n {
+        pub enum $name {
             $(
-                $e,
+                $camel_name,
             )+
         }
 
@@ -27,16 +27,30 @@ macro_rules! header_fields {
 
             match header_byte {
                 $(
-                    $bin => {
-                        let (d, value ) = $parse(d)?;
+                    $binary_code => {
+                        let (d, value): (&[u8], $type) = $parse(d)?;
                         let value = MmsHeaderValue::from(value);
-                        Ok((d,( $n::$e, value )))
+                        Ok((d,( $name::$camel_name, value )))
                     }
                 )+
                     b => {
                         unimplemented!("No known variant for type {:#04X}", b);
                     }
             }
+        }
+        
+        impl VndWapMmsMessage {
+            $(
+                pub fn $under_name(&self) -> Option<&$type> {
+                    match self.headers.get(&$name::$camel_name) {
+                        Some(v) => match v {
+                            MmsHeaderValue::$type(d) => Some(d),
+                            u => panic!("Unexpected value in $camel_name: {:?}", u)
+                        },
+                        None => None
+                    }
+                }
+            )+
         }
     }
 }
