@@ -3,8 +3,8 @@ use log::error;
 use nom::{bytes::complete::take, IResult};
 
 pub fn header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
+    // This can be a string, handle that case
     let (d, header_byte) = take(1u8)(d)?;
-    // let (d, _) = take(1u8)(d)?;
     let header_byte = header_byte[0] & 0x7F;
 
     let (d, header_item) = match header_byte {

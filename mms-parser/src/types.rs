@@ -1,40 +1,24 @@
 pub mod message_header;
+pub mod mms_header;
 
 pub use message_header::*;
+pub use mms_header::{MmsHeaderValue, MmsHeader};
 use PduType::*;
+
+use multimap::MultiMap;
 
 // use enum_primitive_derive::Primitive;
 // use num_enum::IntoPrimitive;
 
+// TODO: Some of these fields might not apply to all wap messages,
+// make this more generic
 #[derive(Debug)]
 pub struct Wap {
     pub transaction_id: u8,
     pub message_type: PduType,
     pub content_type: String,
     pub headers: Vec<MessageHeader>,
-    pub body: Vec<u8>,
-}
-
-#[derive(Debug)]
-pub enum PduType {
-    Connect,
-    ConnectReply,
-    Redirect,
-    Reply,
-    Disconnect,
-    Push,
-    ConfirmedPush,
-    Suspend,
-    Resume,
-    Get,
-    Options,
-    Head,
-    Delete,
-    Trace,
-    Post,
-    Put,
-    DataFragment,
-    Unknown(u8),
+    pub data: Vec<u8>,
 }
 
 // TODO: Move the numbers in this match to the enum definition
@@ -65,4 +49,38 @@ impl From<u8> for PduType {
             _ => Unknown(t),
         }
     }
+}
+
+#[derive(Debug)]
+pub struct VndWapMmsMessage {
+    headers: MultiMap<MmsHeader, MmsHeaderValue>,
+}
+
+impl VndWapMmsMessage {
+    pub fn new(headers: MultiMap<MmsHeader, MmsHeaderValue>) -> Self {
+        Self { headers }
+    }
+}
+
+#[derive(Debug)]
+// TODO: More descriptive name, pdu stands for protocal data unit
+pub enum PduType {
+    Connect,
+    ConnectReply,
+    Redirect,
+    Reply,
+    Disconnect,
+    Push,
+    ConfirmedPush,
+    Suspend,
+    Resume,
+    Get,
+    Options,
+    Head,
+    Delete,
+    Trace,
+    Post,
+    Put,
+    DataFragment,
+    Unknown(u8),
 }
