@@ -5,8 +5,8 @@ mod types;
 #[macro_use]
 extern crate nom;
 
-use helpers::{null_delimited, u8_to_string};
-use parser::{header_item, read_uintvar};
+use helpers::{take_till_null, u8_to_string};
+use parser::{header_item, uintvar};
 use types::{MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap};
 
 use multimap::MultiMap;
@@ -38,7 +38,7 @@ fn take_all(d: &[u8]) -> IResult<&[u8], Vec<u8>> {
 }
 
 fn parse_message(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
-    let (d, header_length) = read_uintvar(d)?;
+    let (d, header_length) = uintvar(d)?;
     let (d, header_content) = take(header_length)(d)?;
     let (_, (content_type, headers)) = complete(message_headers)(header_content)?;
 
@@ -50,7 +50,7 @@ named!(
     message_headers<(&[u8], Vec<MessageHeader>)>,
     do_parse!(
         take!(2)
-            >> content_type: null_delimited
+            >> content_type: take_till_null
             >> headers: many0!(header_item)
             >> (content_type, headers)
     )

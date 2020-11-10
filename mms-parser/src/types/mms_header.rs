@@ -1,4 +1,3 @@
-use crate::header_fields;
 use std::convert::TryFrom;
 
 use super::VndWapMmsMessage;
@@ -17,42 +16,6 @@ pub enum MmsHeaderValue {
     ExpiryField(ExpiryField),
     ClassIdentifier(ClassIdentifier),
     MessageTypeField(MessageTypeField),
-}
-
-impl From<String> for MmsHeaderValue {
-    fn from(d: String) -> Self {
-        Self::String(d)
-    }
-}
-
-impl From<ExpiryField> for MmsHeaderValue {
-    fn from(d: ExpiryField) -> Self {
-        Self::ExpiryField(d)
-    }
-}
-
-impl From<u64> for MmsHeaderValue {
-    fn from(d: u64) -> Self {
-        Self::LongUint(d)
-    }
-}
-
-impl From<u8> for MmsHeaderValue {
-    fn from(d: u8) -> Self {
-        Self::ShortUint(d)
-    }
-}
-
-impl From<ClassIdentifier> for MmsHeaderValue {
-    fn from(d: ClassIdentifier) -> Self {
-        Self::ClassIdentifier(d)
-    }
-}
-
-impl From<MessageTypeField> for MmsHeaderValue {
-    fn from(d: MessageTypeField) -> Self {
-        Self::MessageTypeField(d)
-    }
 }
 
 pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
@@ -79,6 +42,51 @@ pub fn parse_string_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
     let class = crate::helpers::u8_to_string(class).unwrap();
 
     Ok((d, ClassIdentifier::Other(class)))
+}
+
+// TODO: Generalize this
+macro_rules! header_fields {
+    ($name:ident, $(($camel_name:ident, $under_name:ident, $type:ident, $binary_code:expr, $parse:expr));+$(;)*) => {
+        #[derive(Debug, Hash, PartialEq, Eq)]
+        pub enum $name {
+            $(
+                $camel_name,
+            )+
+        }
+
+        pub fn parse_header_item(d: &[u8]) -> IResult<&[u8], (MmsHeader, MmsHeaderValue)> {
+            // TODO: I think this can be a string, handle that case
+            let (d, header_byte) = take(1u8)(d)?;
+            let header_byte = header_byte[0] & 0x7F;
+
+            match header_byte {
+                $(
+                    $binary_code => {
+                        let (d, value): (&[u8], $type) = $parse(d)?;
+                        let value = MmsHeaderValue::$type(value);
+                        Ok((d,( $name::$camel_name, value )))
+                    }
+                )+
+                    b => {
+                        unimplemented!("No known variant for type {:#04X}", b);
+                    }
+            }
+        }
+
+        impl VndWapMmsMessage {
+            $(
+                pub fn $under_name(&self) -> Option<&$type> {
+                    match self.headers.get(&$name::$camel_name) {
+                        Some(v) => match v {
+                            MmsHeaderValue::$type(d) => Some(d),
+                            u => panic!("Unexpected value in $camel_name: {:?}", u)
+                        },
+                        None => None
+                    }
+                }
+            )+
+        }
+    }
 }
 
 // TODO: It may be necessary to have a unknown field for encoding messages

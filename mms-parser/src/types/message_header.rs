@@ -10,7 +10,7 @@ pub enum MessageHeader {
     // EncodingVersion,
     ContentLength(usize),
     // XWapInitiatorUri,
-    AcceptCharset(u8), // For now
+    AcceptCharset(u8), // This should change to a charset struct
     // AcceptRanges,
     UnknownHeader(u8),
 }

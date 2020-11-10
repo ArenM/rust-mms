@@ -9,52 +9,6 @@ use nom::{
     IResult,
 };
 
-
-#[macro_export]
-macro_rules! header_fields {
-    ($name:ident, $(($camel_name:ident, $under_name:ident, $type:ident, $binary_code:expr, $parse:expr));+$(;)*) => {
-        #[derive(Debug, Hash, PartialEq, Eq)]
-        pub enum $name {
-            $(
-                $camel_name,
-            )+
-        }
-
-        pub fn parse_header_item(d: &[u8]) -> IResult<&[u8], (MmsHeader, MmsHeaderValue)> {
-            // TODO: I think this can be a string, handle that case
-            let (d, header_byte) = take(1u8)(d)?;
-            let header_byte = header_byte[0] & 0x7F;
-
-            match header_byte {
-                $(
-                    $binary_code => {
-                        let (d, value): (&[u8], $type) = $parse(d)?;
-                        let value = MmsHeaderValue::from(value);
-                        Ok((d,( $name::$camel_name, value )))
-                    }
-                )+
-                    b => {
-                        unimplemented!("No known variant for type {:#04X}", b);
-                    }
-            }
-        }
-        
-        impl VndWapMmsMessage {
-            $(
-                pub fn $under_name(&self) -> Option<&$type> {
-                    match self.headers.get(&$name::$camel_name) {
-                        Some(v) => match v {
-                            MmsHeaderValue::$type(d) => Some(d),
-                            u => panic!("Unexpected value in $camel_name: {:?}", u)
-                        },
-                        None => None
-                    }
-                }
-            )+
-        }
-    }
-}
-
 pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
     let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
     let (d, _) = tag("\u{0}")(d)?;
@@ -110,7 +64,7 @@ pub fn parse_long_integer(d: &[u8]) -> IResult<&[u8], u64> {
 
     let (d, bytes) = take(len)(d)?;
 
-    // This is copied from tally_u7_nums in uintvar.rs, it may be a good idea to
+    // TODO: This is copied from tally_u7_nums in uintvar.rs, it may be a good idea to
     // turn it into a seperate function.
     let total = bytes
         .iter()
@@ -129,7 +83,7 @@ pub fn parse_value_length(d: &[u8]) -> IResult<&[u8], u64> {
 
     match l1[0] {
         0..=30 => Ok((d, l1[0] as u64)),
-        31 => read_uintvar(d),
+        31 => uintvar(d),
         _ => Err(nom::Err::Error(nom::error::Error::new(
             &[],
             nom::error::ErrorKind::Satisfy,

@@ -5,7 +5,7 @@ use nom::IResult;
 // a uintvar can't be bigger than a usize. It would be better to use something like num-bigint
 /// A uintvar is a composed of 8 bit sequences, the first bit is 1 when ther are following
 /// sequences, and 0 when it is the last byte
-pub fn read_uintvar(d: &[u8]) -> IResult<&[u8], u64> {
+pub fn uintvar(d: &[u8]) -> IResult<&[u8], u64> {
     let mut nums: Vec<u8> = Vec::new();
     let mut d = d;
     let mut carry = true;
@@ -52,7 +52,7 @@ mod test {
     #[test]
     fn read_1_byte_uintvar() {
         let input: [u8; 1] = [0b00000101];
-        let res = read_uintvar(&input);
+        let res = uintvar(&input);
 
         let val = res.unwrap().1;
         assert_eq!(val, 0b101u64);
@@ -62,7 +62,7 @@ mod test {
     fn read_2_byte_uintvar() {
         let input: [u8; 2] = [0b10000101, 0b00000001];
         assert_eq!(
-            read_uintvar(&input).unwrap().1,
+            uintvar(&input).unwrap().1,
             0b1010000001u64
         );
     }
@@ -71,7 +71,7 @@ mod test {
     fn read_multi_byte_uintvar() {
         let input: [u8; 4] = [0b10000001, 0b10000000, 0b10000000, 0b00000011];
         assert_eq!(
-            read_uintvar(&input).unwrap().1,
+            uintvar(&input).unwrap().1,
             0b1000000000000000000011u64
         );
     }
