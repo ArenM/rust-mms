@@ -9,15 +9,28 @@ use multimap::MultiMap;
 
 // use enum_primitive_derive::Primitive;
 // use num_enum::IntoPrimitive;
+//
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct FetchResponse {
+    pub transaction_id: u8,
+    pub message_type: PduType,
+    pub content_type: String,
+    pub headers: Vec<MessageHeader>,
+    #[derivative(Debug="ignore")]
+    pub data: Vec<u8>,
+}
 
 // TODO: Some of these fields might not apply to all wap messages,
 // make this more generic
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Wap {
     pub transaction_id: u8,
     pub message_type: PduType,
     pub content_type: String,
     pub headers: Vec<MessageHeader>,
+    #[derivative(Debug="ignore")]
     pub data: Vec<u8>,
 }
 
@@ -84,4 +97,11 @@ pub enum PduType {
     Put,
     DataFragment,
     Unknown(u8),
+}
+
+#[derive(Debug)]
+// TODO: Handle content type
+pub struct ContentType{ 
+    pub content_type:  String,
+    pub content: Vec<u8>
 }

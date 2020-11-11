@@ -5,15 +5,26 @@ mod types;
 #[macro_use]
 extern crate nom;
 
+#[macro_use]
+extern crate derivative;
+
 use helpers::{take_till_null, u8_to_string};
 use parser::{header_item, uintvar};
-use types::{MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap};
+use types::{
+    FetchResponse, MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap,
+};
 
 use multimap::MultiMap;
 use nom::{
     bytes::complete::take, combinator::complete, do_parse, multi::many1, named,
     number::complete::be_u8, IResult,
 };
+
+pub fn parse_mms_fetch_response(data: &[u8]) -> IResult<&[u8], VndWapMmsMessage > {
+    let (data, mut headers) = complete(many1(types::mms_header::parse_header_item))(data)?;
+    let headers: MultiMap<MmsHeader, MmsHeaderValue> = headers.drain(..).collect();
+    Ok((data, VndWapMmsMessage::new(headers)))
+}
 
 named!(pub parse_data<Wap>,
     do_parse!(
@@ -61,7 +72,8 @@ impl Wap {
     pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
         match &*self.content_type {
             "application/vnd.wap.mms-message" => {
-                let (_, mut headers) = complete(many1(types::mms_header::parse_header_item))(&self.data).unwrap();
+                let (_, mut headers) =
+                    complete(many1(types::mms_header::parse_header_item))(&self.data).unwrap();
                 let headers: MultiMap<MmsHeader, MmsHeaderValue> = headers.drain(..).collect();
                 Some(VndWapMmsMessage::new(headers))
             }

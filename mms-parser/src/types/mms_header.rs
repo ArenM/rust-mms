@@ -1,21 +1,25 @@
 use std::convert::TryFrom;
 
-use super::VndWapMmsMessage;
+use super::{ VndWapMmsMessage, ContentType };
 use crate::parser::*;
 use nom::{bytes::complete::take, IResult};
 
 type ShortUint = u8;
 type LongUint = u64;
+type Bool = bool;
 
 // TODO: parse all variants so this isn't necessary
 #[derive(Debug)]
 pub enum MmsHeaderValue {
+    Bool(bool),
     LongUint(u64),
     ShortUint(u8),
     String(String),
+    ContentType(ContentType),
     ExpiryField(ExpiryField),
     ClassIdentifier(ClassIdentifier),
     MessageTypeField(MessageTypeField),
+    RetrieveStatusField(RetrieveStatusField),
 }
 
 pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
@@ -28,7 +32,7 @@ pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
         131 => ClassIdentifier::Auto,
         _ => {
             return Err(nom::Err::Error(nom::error::Error::new(
-                &[],
+                d,
                 nom::error::ErrorKind::Satisfy,
             )))
         }
@@ -57,17 +61,24 @@ macro_rules! header_fields {
         pub fn parse_header_item(d: &[u8]) -> IResult<&[u8], (MmsHeader, MmsHeaderValue)> {
             // TODO: I think this can be a string, handle that case
             let (d, header_byte) = take(1u8)(d)?;
+            if header_byte[0] & 0x80 == 0 {
+                // TODO: do something better here
+                panic!("{:#04X} doesn't have it's 8th bit set to 1", header_byte[0])
+            }
             let header_byte = header_byte[0] & 0x7F;
 
             match header_byte {
                 $(
                     $binary_code => {
+                        // println!("Matched header {:#04X}", $binary_code);
                         let (d, value): (&[u8], $type) = $parse(d)?;
                         let value = MmsHeaderValue::$type(value);
                         Ok((d,( $name::$camel_name, value )))
                     }
                 )+
                     b => {
+                        // TODO: it is possible to safely take the header data without parsing the
+                        // header see wap-230 8.4.1.2
                         unimplemented!("No known variant for type {:#04X}", b);
                     }
             }
@@ -96,8 +107,8 @@ header_fields! {
     // (Bcc);
     // (Cc);
     // (Content);
-    // (ContentType);
-    // (Date);
+    (ContentType, content_type, ContentType, 0x04, |d| pase_content_type(d));
+    (Date, date, LongUint, 0x05, |d| parse_long_integer(d));
     (From, from, String, 0x09, |d| {
         let (d, len) = parse_value_length(d)?;
         let (d, value) = take(len)(d)?;
@@ -117,11 +128,23 @@ header_fields! {
             }
         }
     });
-    // (MessageID);
+    (MessageID, message_id, String, 0x0B, |d| parse_text_string(d));
     // (Mode);
-    // (Subject);
-    // (To);
-    // (XMmsAdaptationAllowed);
+    (Subject, subject, String, 0x16, |d| parse_encoded_string_value(d));
+    (To, to, String, 0x17, |d| parse_encoded_string_value(d));
+    (XMmsAdaptationAllowed, x_mms_adaptation_alowed, Bool, 0x3C, |d| -> IResult<&[u8], bool> {
+        let (d, allowed) = take(1u8)(d)?;
+        match allowed[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            // TODO: Have a recoverable error type, which means that an unknown value was parsed,
+            // but it is okay to keep going
+            // Yes when testing this on a mms message reviced on t-mobile there was a value of 115
+            // which I don't know how to interpret, so I'm just ignoreing it
+            _ => Ok((d, false))
+            // _ => unimplemented!()
+        }
+    });
     // (XMmsApplicID);
     // (XMmsAttributes);
     // (XMmsAuxApplicInfo);
@@ -130,7 +153,15 @@ header_fields! {
     // (XMmsContentClass);
     (XMmsContentLocation, x_mms_content_location, String, 0x03, |d| parse_text_string(d));
     // (XMmsDRMContent);
-    // (XMmsDeliveryReport);
+    (XMmsDeliveryReport, x_mms_delivery_report, Bool, 0x06, |d| -> IResult<&[u8], bool> {
+        // TODO: parse bool logic seems to be duplicated, perhaps write a macro for this match?
+        let (d, report) = take(1u8)(d)?;
+        match report[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            _ => unimplemented!() // TODO: just return an error
+        }
+    });
     // (XMmsDeliveryTime);
     // (XMmsDistributionIndicator);
     // (XMmsElementDescriptor);
@@ -157,7 +188,7 @@ header_fields! {
 
         Ok((d, field))
     });
-    // (XMmsLimit);
+    (XMmsLimit, x_mms_limit, LongUint, 0x33, |d| parse_integer_value(d));
     // (XMmsMMFlags);
     (XMmsMMSVersion, x_mms_mms_version, ShortUint, 0x0D, |d| parse_short_integer(d));
     // (XMmsMMState);
@@ -177,9 +208,25 @@ header_fields! {
     });
     // (XMmsPreviouslySentBy);
     // (XMmsPreviouslySentDate);
-    // (XMmsPriority);
+    (XMmsPriority, x_mms_priority, ShortUint, 0x0F, |d| -> IResult<&[u8], u8> { // TODO: Use enum instead of u8
+        let (d, priority) = take(1u8)(d)?;
+        let priority = match priority[0] {
+            128 => 1,
+            129 => 2,
+            130 => 3,
+            _ => unimplemented!()
+        };
+        Ok((d, priority))
+    });
     // (XMmsQuotas);
-    // (XMmsReadReport);
+    (XMmsReadReport, x_mms_read_report, Bool, 0x10, |d| -> IResult<&[u8], Bool> {
+        let (d, report) = take(1u8)(d)?;
+        match report[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            _ => unimplemented!() // TODO: just return an error
+        }
+    });
     // (XMmsReadStatus);
     // (XMmsRecommendedRe);
     // (XMmsRecommendedRetrieval);
@@ -192,7 +239,24 @@ header_fields! {
     // (XMmsReportAllowed);
     // (XMmsResponseStatus);
     // (XMmsResponseText);
-    // (XMmsRetrieveStatus);
+    (XMmsRetrieveStatus, x_mms_retrieve_status, RetrieveStatusField, 0x19,
+     |d| -> IResult<&[u8], RetrieveStatusField>{
+        let (d, status) = take(1u8)(d)?;
+
+        let status = match status[0] {
+            192 => RetrieveStatusField::ErrorTransientFailure,
+            193 => RetrieveStatusField::ErrorTransientMessageNotFound,
+            194 => RetrieveStatusField::ErrorTransientNetworkProblem,
+            195..=223 => RetrieveStatusField::ErrorTransientFailureOther(status[0]),
+            224 => RetrieveStatusField::ErrorPermanentFailure,
+            225 => RetrieveStatusField::ErrorPermanentServceDenied,
+            226 => RetrieveStatusField::ErrorPermanentMessageNotFound,
+            227 => RetrieveStatusField::ErrorPermanentContentUnsupported,
+            // TODO: This should pontentially be for just 228..255
+            _ => RetrieveStatusField::ErrorPermanentFailureOther(status[0]),
+        };
+        Ok((d, status))
+    });
     // (XMmsRetrieveText);
     // (XMmsSenderVisibility);
     // (XMmsStart);
@@ -248,6 +312,20 @@ pub enum MessageTypeField {
     MDeleteConf,
     MCancelReq,
     MCancelConf,
+}
+
+#[derive(Debug)]
+pub enum RetrieveStatusField {
+    Ok,
+    ErrorTransientFailure,
+    ErrorTransientFailureOther(u8),
+    ErrorTransientMessageNotFound,
+    ErrorTransientNetworkProblem,
+    ErrorPermanentFailure,
+    ErrorPermanentFailureOther(u8),
+    ErrorPermanentServceDenied,
+    ErrorPermanentMessageNotFound,
+    ErrorPermanentContentUnsupported,
 }
 
 impl TryFrom<u8> for MessageTypeField {

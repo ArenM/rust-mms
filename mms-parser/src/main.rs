@@ -1,4 +1,4 @@
-use mms_parser::parse_data;
+use mms_parser::parse_mms_fetch_response;
 
 use std::{fs::File, io::Read, path::PathBuf};
 
@@ -12,11 +12,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let data = read_file(&path.into()).unwrap();
 
-    let (_remainder, parsed) = parse_data(&data).unwrap();
+    let (remainder, parsed) = nom::dbg_dmp(parse_mms_fetch_response, "something")(&data).unwrap();
+    println!("Raminder length: {:?}", remainder.len());
     println!("Notification Headers: {:#?}", parsed);
 
-    let body = parsed.parse_body().unwrap();
-    println!("Message Headers: {:#?}", body);
+    // let body = parsed.parse_body().unwrap();
+    // println!("Message Headers: {:#?}", body);
 
     Ok(())
 }
