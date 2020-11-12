@@ -11,16 +11,15 @@ use isahc::{prelude::*, HttpClient};
 #[derive(StructOpt, Debug)]
 #[structopt(name = "mmsutil")]
 struct Args {
-    // TODO: uncomment these once they can be used
-    // /// Use ipv6 only, sometimes carriers will only allow fetching messages using ipv6
-    // #[structopt(short = "6", long)]
-    // ipv6: bool,
-    // /// Use ipv4 only
-    // #[structopt(short = "4", long)]
-    // ipv4: bool,
-    // /// Dns servers to use, sometimes it's necessary to specifically use your carrier's dns servers
-    // #[structopt(short, long)]
-    // dns: Option<String>,
+    /// Use ipv6 only, sometimes carriers will only allow fetching messages using ipv6
+    #[structopt(short = "6", long)]
+    ipv6: bool,
+    /// Use ipv4 only
+    #[structopt(short = "4", long)]
+    ipv4: bool,
+    /// Dns servers to use, sometimes it's necessary to specifically use your carrier's dns servers
+    #[structopt(short, long)]
+    dns: Option<String>,
     /// Network interface to fetch mms messages on
     #[structopt(short, long)]
     interface: Option<String>,
@@ -45,12 +44,18 @@ fn main() {
         client = client.interface(isahc::config::NetworkInterface::name(interface));
     }
 
-    // if args.ipv6 && args.ipv4 {
-    //     // TODO: It may be worth print ing a warnig here
-    //     // do nothing
-    // } else if args.ipv6 {
-    // } else if args.ipv4 {
-    // }
+    let proto = if args.ipv6 == args.ipv4 {
+        if args.ipv6 {
+            println!("Warning: using the ipv6, and ipv4 flags together does nothing")
+        }
+        isahc::config::IpProtocol::Any
+    } else if args.ipv6 {
+        isahc::config::IpProtocol::V6
+    } else {
+        isahc::config::IpProtocol::V4
+    };
+
+    client = client.ip_protocol(proto);
 
     let client = client.build().unwrap();
 
