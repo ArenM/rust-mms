@@ -78,7 +78,7 @@ fn write_file(path: &PathBuf, data: &[u8]) -> std::io::Result<()> {
     }
     let mut file = File::create(path)?;
 
-    file.write_all(data);
+    file.write_all(data)?;
 
     Ok(())
 }

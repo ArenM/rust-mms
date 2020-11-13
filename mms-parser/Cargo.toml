@@ -11,7 +11,7 @@ name = "mms_parser"
 name = "paraser"
 path = "src/main.rs"
 
-[dependencies]
+[dev-dependencies]
 pico-args = "0.3.4"
 derivative = "2.1.1"
 encoding = "0.2.33"
