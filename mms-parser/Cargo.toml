@@ -7,13 +7,10 @@ edition = "2018"
 [lib]
 name = "mms_parser"
 
-[[bin]]
-name = "paraser"
-path = "src/main.rs"
-
 [dependencies]
 derivative = "2.1.1"
 encoding = "0.2.33"
+log = "0.4.11"
 
 [dependencies.multimap]
 version = "0.8.2"

@@ -1,5 +1,8 @@
+// TODO: This will go away when parsers for all / most headers are implemented
+#![allow(unused)]
 mod message_header;
 mod uintvar;
+pub(crate) mod mms_header;
 
 pub use message_header::*;
 pub use uintvar::*;
@@ -10,15 +13,21 @@ use nom::{
     IResult,
 };
 
+// TODO: The return slice should end with a 0 byte
 pub fn take_text_string(d: &[u8]) -> IResult<&[u8], &[u8]> {
-    let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
+    let (d, val) = take_till(|c| c == 0)(d)?;
     let (d, _) = tag("\u{0}")(d)?;
     Ok((d, val))
 }
 
 pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
     let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
-    // let (d, _) = tag("\u{0}")(d)?;
+    // TODO: if take_text_string ends with a 0 byte, then this can just tag 0
+    let d = if d.len() >= 1 && d[0] == 0 {
+        &d[1..]
+    } else {
+        d
+    };
 
     if val[0] >= 128 {
         return Err(nom::Err::Error(nom::error::Error::new(
@@ -71,7 +80,7 @@ pub fn parse_long_integer(d: &[u8]) -> IResult<&[u8], u64> {
 
     let (d, bytes) = take(len)(d)?;
 
-    // TODO: This is copied from tally_u7_nums in uintvar.rs, it may be a good idea to
+    // TODO: This is very similar to tally_u7_nums in uintvar.rs, it may be a good idea to
     // turn it into a seperate function.
     let total = bytes
         .iter()
@@ -142,10 +151,11 @@ fn parse_content_type_general_form(d: &[u8]) -> IResult<&[u8], String> {
 pub fn pase_content_type(d: &[u8]) -> IResult<&[u8], crate::types::ContentType> {
     // let (d, c) = crate::helpers::take_till_null(d)?;
     // println!("Content type: {:?}", c);
-    let (d, c) = alt((
-        parse_conent_type_constrained_encoding,
-        parse_content_type_general_form,
-    ))(d)?;
+    // let (d, c) = alt((
+    //     parse_conent_type_constrained_encoding,
+    //     parse_content_type_general_form,
+    // ))(d)?;
+    let c = crate::helpers::u8_to_string_include_non_utf8(d);
     // TODO: only populatae the content field if parsing a PDU which has a body
     Ok((
         &[],

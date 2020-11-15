@@ -1,7 +1,10 @@
+mod encoder;
 mod helpers;
 mod parser;
+mod pdu;
 pub mod types;
-pub mod pdu;
+
+pub use pdu::*;
 
 #[macro_use]
 extern crate nom;
@@ -11,32 +14,31 @@ extern crate derivative;
 
 use helpers::{take_till_null, u8_to_string};
 use parser::{header_item, uintvar};
-use types::{
-    MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap,
-};
+use types::{MessageHeader, PduType, VndWapMmsMessage, Wap};
 
-use multimap::MultiMap;
 use nom::{
-    bytes::complete::take, combinator::complete, do_parse, multi::many1, named,
-    number::complete::be_u8, IResult,
+    bytes::complete::take, combinator::complete, do_parse, named, number::complete::be_u8, IResult,
 };
-
-pub fn parse_mms_pdu(data: &[u8]) -> IResult<&[u8], VndWapMmsMessage > {
-    println!("Mms Pdu First Byte: {:#04X}", data[0]);
-    let (data, mut headers) = complete(many1(types::mms_header::parse_header_item))(data)?;
-    let headers: MultiMap<MmsHeader, MmsHeaderValue> = headers.drain(..).collect();
-    Ok((data, VndWapMmsMessage::new(headers)))
-}
 
 impl Wap {
     // TODO: Replace Option with Result
     pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
         match &*self.content_type {
             "application/vnd.wap.mms-message" => {
-                match parse_mms_pdu(&self.data) {
-                    Ok(d) => Some(d.1),
-                    Err(_) => None
-                }
+                let ctx = ParserCtx {
+                    message_class: MessageClass { has_body: false },
+                };
+                let split = match split_header_fields(&*self.data, ctx) {
+                    Ok((remainder, s)) => {
+                        if remainder.len() > 0 {
+                            return None
+                        }
+                        s
+                    },
+                    Err(_) => return None,
+                };
+                let parsed = parse_header_fields(&split);
+                Some(VndWapMmsMessage::new(parsed))
             }
             _ => None,
         }

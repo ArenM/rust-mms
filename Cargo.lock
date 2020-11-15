@@ -342,6 +342,7 @@ version = "0.1.0"
 dependencies = [
  "derivative",
  "encoding",
+ "log",
  "multimap",
  "nom",
  "pico-args",

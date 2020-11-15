@@ -1,4 +1,4 @@
-use mms_parser::pdu::{split_header_fields, parse_header_fields_with_errors, MessageClass, ParserCtx};
+use mms_parser::{split_header_fields, parse_header_fields_with_errors, MessageClass, ParserCtx};
 use mms_parser::parse_wap_push;
 
 use std::{fs::File, io::Read, path::PathBuf};
