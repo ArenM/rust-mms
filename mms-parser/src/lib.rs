@@ -1,6 +1,7 @@
 mod helpers;
 mod parser;
-mod types;
+pub mod types;
+pub mod pdu;
 
 #[macro_use]
 extern crate nom;
@@ -11,7 +12,7 @@ extern crate derivative;
 use helpers::{take_till_null, u8_to_string};
 use parser::{header_item, uintvar};
 use types::{
-    FetchResponse, MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap,
+    MessageHeader, MmsHeader, MmsHeaderValue, PduType, VndWapMmsMessage, Wap,
 };
 
 use multimap::MultiMap;
@@ -20,18 +21,35 @@ use nom::{
     number::complete::be_u8, IResult,
 };
 
-pub fn parse_mms_fetch_response(data: &[u8]) -> IResult<&[u8], VndWapMmsMessage > {
+pub fn parse_mms_pdu(data: &[u8]) -> IResult<&[u8], VndWapMmsMessage > {
+    println!("Mms Pdu First Byte: {:#04X}", data[0]);
     let (data, mut headers) = complete(many1(types::mms_header::parse_header_item))(data)?;
     let headers: MultiMap<MmsHeader, MmsHeaderValue> = headers.drain(..).collect();
     Ok((data, VndWapMmsMessage::new(headers)))
 }
 
-named!(pub parse_data<Wap>,
+impl Wap {
+    // TODO: Replace Option with Result
+    pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
+        match &*self.content_type {
+            "application/vnd.wap.mms-message" => {
+                match parse_mms_pdu(&self.data) {
+                    Ok(d) => Some(d.1),
+                    Err(_) => None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+// TODO: Put this somewhere else so I don't have to look at it
+named!(pub parse_wap_push<Wap>,
     do_parse!(
         // TODO: This field should ONLY be red in "connectionless PDUs" it could cause problems
         transaction_id: be_u8 >>
         message_type: be_u8 >>
-        message_headers: parse_message >>
+        message_headers: parse_message_headers >>
         data: take_all >>
         (Wap {
                 transaction_id,
@@ -48,7 +66,7 @@ fn take_all(d: &[u8]) -> IResult<&[u8], Vec<u8>> {
     Ok((e, d.to_vec()))
 }
 
-fn parse_message(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
+fn parse_message_headers(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
     let (d, header_length) = uintvar(d)?;
     let (d, header_content) = take(header_length)(d)?;
     let (_, (content_type, headers)) = complete(message_headers)(header_content)?;
@@ -66,18 +84,3 @@ named!(
             >> (content_type, headers)
     )
 );
-
-impl Wap {
-    // TODO: Replace Option with Result
-    pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
-        match &*self.content_type {
-            "application/vnd.wap.mms-message" => {
-                let (_, mut headers) =
-                    complete(many1(types::mms_header::parse_header_item))(&self.data).unwrap();
-                let headers: MultiMap<MmsHeader, MmsHeaderValue> = headers.drain(..).collect();
-                Some(VndWapMmsMessage::new(headers))
-            }
-            _ => None,
-        }
-    }
-}

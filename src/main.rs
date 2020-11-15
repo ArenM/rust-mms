@@ -1,4 +1,4 @@
-use mms_parser::parse_data;
+use mms_parser::parse_wap_push;
 use std::{
     fs::File,
     io::{prelude::*, Read},
@@ -41,7 +41,7 @@ fn main() {
     let args = Args::from_args();
     let data = read_file(&args.file).unwrap();
 
-    let (_, parsed) = parse_data(&data).unwrap();
+    let (_, parsed) = parse_wap_push(&data).unwrap();
     let body = parsed.parse_body().unwrap();
 
     let message_url = body.x_mms_content_location().unwrap();

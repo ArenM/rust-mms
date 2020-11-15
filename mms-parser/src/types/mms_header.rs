@@ -1,26 +1,49 @@
 use std::convert::TryFrom;
 
-use super::{ VndWapMmsMessage, ContentType };
+use super::{ContentType, VndWapMmsMessage};
 use crate::parser::*;
 use nom::{bytes::complete::take, IResult};
+use self::MmsHeader::*;
 
 type ShortUint = u8;
 type LongUint = u64;
 type Bool = bool;
 
 // TODO: parse all variants so this isn't necessary
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MmsHeaderValue {
     Bool(bool),
     LongUint(u64),
     ShortUint(u8),
     String(String),
+    Bytes(Vec<u8>),
     ContentType(ContentType),
     ExpiryField(ExpiryField),
     ClassIdentifier(ClassIdentifier),
     MessageTypeField(MessageTypeField),
     RetrieveStatusField(RetrieveStatusField),
 }
+
+macro_rules! mms_header_from {
+    ($variant:ident, $type:ty) => {
+        impl std::convert::From<$type> for MmsHeaderValue {
+            fn from(value: $type) -> Self {
+                Self::$variant(value)
+            }
+        }
+    }
+}
+
+mms_header_from!(Bool, bool);
+mms_header_from!(LongUint, u64);
+mms_header_from!(ShortUint, u8);
+mms_header_from!(String, String);
+mms_header_from!(Bytes, Vec<u8>);
+mms_header_from!(ContentType, ContentType);
+mms_header_from!(ExpiryField, ExpiryField);
+mms_header_from!(ClassIdentifier, ClassIdentifier);
+mms_header_from!(MessageTypeField, MessageTypeField);
+mms_header_from!(RetrieveStatusField, RetrieveStatusField);
 
 pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
     let (d, class) = take(1u8)(d)?;
@@ -48,14 +71,188 @@ pub fn parse_string_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
     Ok((d, ClassIdentifier::Other(class)))
 }
 
+macro_rules! parse_header_field_builder {
+    ($($field_name:ident, $type:ty => $parse:expr),+$(,)*) => {
+        pub(crate) fn parse_header_field(field: MmsHeader, d: &[u8]) -> IResult<&[u8], MmsHeaderValue> {
+            match field {
+                $(
+                    $field_name => {
+                        let (d, value): (&[u8], $type) = $parse(d)?;
+                        let value = MmsHeaderValue::from(value);
+                        Ok((d, value))
+                    }
+                )*
+                    field => {
+                        // TODO: This doesn't need to panic, just return an
+                        // error
+                        // nom::error::Error::from_external_error is probably what is needed for
+                        // this
+                        unimplemented!("A parser for field `{:?}` isn't implemented yet", field);
+                    }
+            }
+        }
+    }
+}
+
+parse_header_field_builder!{
+    ContentType, ContentType => |d| pase_content_type(d),
+    Date, LongUint => |d| parse_long_integer(d),
+    From, String => |d| {
+        let (d, len) = parse_value_length(d)?;
+        let (d, value) = take(len)(d)?;
+
+        let (data, token) = take(1u8)(value)?;
+        let token = token[0];
+
+        match token {
+            128 => Ok((
+                    d,
+                    parse_encoded_string_value(data)?.1,
+            )),
+            129 => unimplemented!(),
+            _ => {
+                //error
+                panic!("Unexpected Token: {:?}", token);
+            }
+        }
+    },
+    MessageID, String => |d| parse_text_string(d),
+    Subject, String => |d| parse_encoded_string_value(d),
+    To, String => |d| parse_encoded_string_value(d),
+    XMmsAdaptationAllowed, Bool => |d| -> IResult<&[u8], bool> {
+        let (d, allowed) = take(1u8)(d)?;
+        match allowed[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            // TODO: Have a recoverable error type, which means that an unknown value was parsed,
+            // but it is okay to keep going
+            // Yes when testing this on a mms message reviced on t-mobile there was a value of 115
+            // which I don't know how to interpret, so I'm just ignoreing it
+            _ => Ok((d, false))
+                // _ => unimplemented!()
+        }
+    },
+    XMmsContentLocation, String => |d| parse_text_string(d),
+    XMmsDeliveryReport, Bool => |d| -> IResult<&[u8], bool> {
+        // TODO: parse bool logic seems to be duplicated, perhaps write a macro for this match?
+        let (d, report) = take(1u8)(d)?;
+        match report[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            _ => unimplemented!() // TODO: just return an error
+        }
+    },
+    XMmsExpiry, ExpiryField => |d| {
+        let (d, len) = parse_value_length(d)?;
+        let (d, value) = take(len)(d)?;
+
+        let (value, token) = take(1u8)(value)?;
+
+        let field = match token[0] {
+            128 => {
+                let (_, unix_time) = parse_long_integer(value)?;
+                ExpiryField::Absolute(unix_time)
+            }
+            129 => {
+                let (_, time_delta) = parse_long_integer(value)?;
+                ExpiryField::Relative(time_delta)
+            }
+            _ => {
+                // TODO: Not valid, return an error
+                unimplemented!()
+            }
+        };
+
+        Ok((d, field))
+    },
+    XMmsLimit, LongUint => |d| parse_integer_value(d),
+    XMmsMMSVersion, ShortUint => |d| parse_short_integer(d),
+    XMmsMessageClass, ClassIdentifier => |d| nom::branch::alt((parse_enum_class, parse_string_class))(d),
+    XMmsMessageSize, LongUint => |d| parse_long_integer(d),
+    XMmsMessageType, MessageTypeField => |d| -> IResult<&[u8], MessageTypeField> {
+        let (d, message_type) = take(1u8)(d)?;
+        Ok((
+                d,
+                // TODO: return error insetad of unwraping
+                MessageTypeField::try_from(message_type[0]).unwrap(),
+        ))
+    },
+    XMmsPriority, ShortUint => |d| -> IResult<&[u8], u8> { // TODO: Use enum instead of u8
+                let (d, priority) = take(1u8)(d)?;
+                let priority = match priority[0] {
+                    128 => 1,
+                    129 => 2,
+                    130 => 3,
+                    _ => unimplemented!()
+                };
+                Ok((d, priority))
+    },
+    XMmsReadReport, Bool => |d| -> IResult<&[u8], bool> {
+        let (d, report) = take(1u8)(d)?;
+        match report[0] {
+            128 => Ok((d, true)),
+            129 => Ok((d, false)),
+            _ => unimplemented!() // TODO: just return an error
+        }
+    },
+    XMmsRetrieveStatus, RetrieveStatusField => |d| -> IResult<&[u8], RetrieveStatusField> {
+        let (d, status) = take(1u8)(d)?;
+
+        let status = match status[0] {
+            192 => RetrieveStatusField::ErrorTransientFailure,
+            193 => RetrieveStatusField::ErrorTransientMessageNotFound,
+            194 => RetrieveStatusField::ErrorTransientNetworkProblem,
+            195..=223 => RetrieveStatusField::ErrorTransientFailureOther(status[0]),
+            224 => RetrieveStatusField::ErrorPermanentFailure,
+            225 => RetrieveStatusField::ErrorPermanentServceDenied,
+            226 => RetrieveStatusField::ErrorPermanentMessageNotFound,
+            227 => RetrieveStatusField::ErrorPermanentContentUnsupported,
+            // TODO: This should pontentially be for just 228..255
+            _ => RetrieveStatusField::ErrorPermanentFailureOther(status[0]),
+        };
+        Ok((d, status))
+    },
+    XMmsTransactionId, String => |d| parse_text_string(d),
+    ImplicitBody, Vec<u8> => |d: &[u8]| -> IResult<&[u8], Vec<u8>> { Ok(( &[], d.to_vec() )) },
+}
+
+
 // TODO: Generalize this
 macro_rules! header_fields {
     ($name:ident, $(($camel_name:ident, $under_name:ident, $type:ident, $binary_code:expr, $parse:expr));+$(;)*) => {
-        #[derive(Debug, Hash, PartialEq, Eq)]
+        #[derive(Debug, Hash, PartialEq, Eq, Clone)]
         pub enum $name {
             $(
                 $camel_name,
             )+
+                UnknownInt(u8),
+                ImplicitBody,
+        }
+
+        impl std::convert::From<u8> for $name {
+            fn from(d: u8) -> Self {
+                match d {
+                    $(
+                        $binary_code => $name::$camel_name,
+                    )+
+                        v => $name::UnknownInt(v)
+                }
+            }
+        }
+
+        // TODO: This should probably eithre be TryInto or return a &[u8]
+        impl Into<u8> for $name {
+            fn into(self) -> u8 {
+                match self {
+                    $(
+                        Self::$camel_name => $binary_code,
+                    )+
+                        Self::UnknownInt(i) => i,
+                        // TODO: This isn't correct, and will produce an invalid
+                        // message if used to encode
+                        Self::ImplicitBody => 0,
+                }
+            }
         }
 
         pub fn parse_header_item(d: &[u8]) -> IResult<&[u8], (MmsHeader, MmsHeaderValue)> {
@@ -66,6 +263,7 @@ macro_rules! header_fields {
                 panic!("{:#04X} doesn't have it's 8th bit set to 1", header_byte[0])
             }
             let header_byte = header_byte[0] & 0x7F;
+            println!("Header Byte: {:#04X}", header_byte);
 
             match header_byte {
                 $(
@@ -269,7 +467,7 @@ header_fields! {
     (XMmsTransactionId, x_mms_transaction_id, String, 0x18, |d| parse_text_string(d))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClassIdentifier {
     Personal,
     Advertisment,
@@ -280,13 +478,13 @@ pub enum ClassIdentifier {
 
 // TODO: use date time and time deltas for this (probably from chrono crate)
 // or even better convert realitve time to absolute when parsing, and just store that
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpiryField {
     Absolute(u64),
     Relative(u64),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MessageTypeField {
     MSendReq,
     MSendConf,
@@ -314,7 +512,7 @@ pub enum MessageTypeField {
     MCancelConf,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RetrieveStatusField {
     Ok,
     ErrorTransientFailure,

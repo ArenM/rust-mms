@@ -10,9 +10,15 @@ use nom::{
     IResult,
 };
 
-pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
+pub fn take_text_string(d: &[u8]) -> IResult<&[u8], &[u8]> {
     let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
     let (d, _) = tag("\u{0}")(d)?;
+    Ok((d, val))
+}
+
+pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
+    let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
+    // let (d, _) = tag("\u{0}")(d)?;
 
     if val[0] >= 128 {
         return Err(nom::Err::Error(nom::error::Error::new(

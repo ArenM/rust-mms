@@ -99,7 +99,7 @@ pub enum PduType {
     Unknown(u8),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 // TODO: Handle content type
 pub struct ContentType{ 
     pub content_type:  String,
