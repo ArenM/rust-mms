@@ -1,11 +1,13 @@
 // TODO: This will go away when parsers for all / most headers are implemented
 #![allow(unused)]
 mod message_header;
+mod content_type;
 mod uintvar;
 pub(crate) mod mms_header;
 
 pub use message_header::*;
 pub use uintvar::*;
+pub use content_type::*;
 
 use nom::{
     branch::alt,
@@ -103,14 +105,14 @@ pub fn parse_integer_value(d: &[u8]) -> IResult<&[u8], u64> {
     alt((short_integer_u64, parse_long_integer))(d)
 }
 
-pub fn parse_value_length(d: &[u8]) -> IResult<&[u8], u64> {
-    let (d, l1) = take(1u8)(d)?;
+pub fn parse_value_length(data: &[u8]) -> IResult<&[u8], u64> {
+    let (remainder, l1) = take(1u8)(data)?;
 
     match l1[0] {
-        0..=30 => Ok((d, l1[0] as u64)),
-        31 => uintvar(d),
+        0..=30 => Ok((remainder, l1[0] as u64)),
+        31 => uintvar(remainder),
         _ => Err(nom::Err::Error(nom::error::Error::new(
-            l1,
+            data,
             nom::error::ErrorKind::Satisfy,
         ))),
     }
@@ -127,43 +129,6 @@ fn parse_value_length_charset_string(d: &[u8]) -> IResult<&[u8], String> {
 
 pub fn parse_encoded_string_value(d: &[u8]) -> IResult<&[u8], String> {
     alt((parse_text_string, parse_value_length_charset_string))(d)
-}
-
-fn parse_conent_type_constrained_encoding(d: &[u8]) -> IResult<&[u8], String> {
-    match parse_short_integer(d) {
-        Ok((d, _encoding)) => Ok((d, "".to_string())),
-        Err(_) => {
-            let (d, crs) = take_while1(|c: u8| !c.is_ascii_control() || c == 0)(d)?;
-            let (d, _) = tag("\u{0}")(d)?;
-
-            Ok((d, crate::helpers::u8_to_string(crs).unwrap()))
-        }
-    }
-}
-
-fn parse_content_type_general_form(d: &[u8]) -> IResult<&[u8], String> {
-    let (d, len) = parse_value_length(d)?;
-    let (d, header) = take(len)(d)?;
-    Ok((d, crate::helpers::u8_to_string_include_non_utf8(header)))
-}
-
-// see wap-230-wsp-20010705-a.pdf section 8.4.2.24
-pub fn pase_content_type(d: &[u8]) -> IResult<&[u8], crate::types::ContentType> {
-    // let (d, c) = crate::helpers::take_till_null(d)?;
-    // println!("Content type: {:?}", c);
-    // let (d, c) = alt((
-    //     parse_conent_type_constrained_encoding,
-    //     parse_content_type_general_form,
-    // ))(d)?;
-    let c = crate::helpers::u8_to_string_include_non_utf8(d);
-    // TODO: only populatae the content field if parsing a PDU which has a body
-    Ok((
-        &[],
-        crate::types::ContentType {
-            content_type: c,
-            content: d.to_vec(),
-        },
-    ))
 }
 
 #[cfg(test)]

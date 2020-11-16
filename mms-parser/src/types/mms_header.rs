@@ -1,10 +1,11 @@
 use std::convert::TryFrom;
 
-use super::{ContentType, VndWapMmsMessage};
+use super::VndWapMmsMessage;
 
 pub(crate) type ShortUint = u8;
 pub(crate) type LongUint = u64;
 pub(crate) type Bool = bool;
+pub(crate) type ContentType = mime::Mime;
 
 // TODO: parse all variants so this isn't necessary
 #[derive(Debug, Clone)]
@@ -14,7 +15,7 @@ pub enum MmsHeaderValue {
     ShortUint(u8),
     String(String),
     Bytes(Vec<u8>),
-    ContentType(ContentType),
+    ContentType(mime::Mime),
     ExpiryField(ExpiryField),
     ClassIdentifier(ClassIdentifier),
     MessageTypeField(MessageTypeField),
@@ -28,7 +29,7 @@ macro_rules! mms_header_from {
                 Self::$variant(value)
             }
         }
-    }
+    };
 }
 
 mms_header_from!(Bool, bool);

@@ -17,23 +17,27 @@ fn parse_header_name(d: &[u8]) -> IResult<&[u8], MmsHeader> {
     Ok((d, MmsHeader::from(header_byte)))
 }
 
-fn take_header_field(d: &[u8]) -> IResult<&[u8], (MmsHeader, Vec<u8>)> {
+pub(crate) fn take_header_field(d: &[u8]) -> IResult<&[u8], (MmsHeader, Vec<u8>)> {
     let (d, header_byte) = parse_header_name(d)?;
+    let (d, header_value) = take_field(d)?;
+    Ok((d, (header_byte, header_value.to_vec())))
+}
 
+pub(crate) fn take_field(d: &[u8]) -> IResult<&[u8], &[u8]> {
     let (_, first_byte) = take(1u8)(d)?;
     let first_byte = first_byte[0];
 
     let (d, header_value) = match first_byte {
         0..=30 => take(first_byte + 1)(d),
         31 => {
-            let (d, len) = uintvar(d)?;
-            take(len)(d)
+            let (pu, len) = uintvar(&d[1..])?;
+            take(len + (d.len() as u64 - pu.len() as u64))(d)
         }
         32..=127 => take_text_string(d),
         128..=255 => take(1u8)(d),
     }?;
 
-    Ok((d, (header_byte, header_value.to_vec())))
+    Ok((d, header_value))
 }
 
 pub fn split_header_fields(d: &[u8], ctx: ParserCtx) -> IResult<&[u8], Vec<(MmsHeader, Vec<u8>)>> {
@@ -65,10 +69,13 @@ pub fn split_header_fields(d: &[u8], ctx: ParserCtx) -> IResult<&[u8], Vec<(MmsH
 pub fn parse_header_fields(
     fields: &Vec<(MmsHeader, Vec<u8>)>,
 ) -> MultiMap<MmsHeader, MmsHeaderValue> {
-    parse_header_fields_with_errors(fields).iter().filter_map(|h| match h.1 {
-        Ok(d) => Some((h.0.clone(), d.clone())),
-        Err(_) => None
-    }).collect()
+    parse_header_fields_with_errors(fields)
+        .iter()
+        .filter_map(|h| match h.1 {
+            Ok(d) => Some((h.0.clone(), d.clone())),
+            Err(_) => None,
+        })
+        .collect()
 }
 
 pub fn parse_header_fields_with_errors<'a>(
@@ -81,8 +88,8 @@ pub fn parse_header_fields_with_errors<'a>(
                 Ok((r, v)) => v,
                 Err(e) => {
                     let err = e;
-                    return (i.0.clone(), Err(err))
-                },
+                    return (i.0.clone(), Err(err));
+                }
             };
             (i.0.clone(), Ok(value))
         })

@@ -11,6 +11,7 @@ name = "mms_parser"
 derivative = "2.1.1"
 encoding = "0.2.33"
 log = "0.4.11"
+mime = "0.3.16"
 
 [dependencies.multimap]
 version = "0.8.2"

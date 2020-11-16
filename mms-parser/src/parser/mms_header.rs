@@ -4,6 +4,7 @@ use crate::types::mms_header::*;
 
 use log::debug;
 use nom::{bytes::complete::take, IResult};
+use mime::Mime;
 use std::convert::TryFrom;
 
 pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
@@ -60,7 +61,7 @@ macro_rules! parse_header_field_builder {
 // to check first
 parse_header_field_builder!{
     // TODO: I haven't been able to properly parse content-type yet
-    // ContentType as ContentType => |d| pase_content_type(d),
+    ContentType as Mime => |d| parse_content_type(d),
     Date as LongUint => |d| parse_long_integer(d),
     From as String => |d| {
         let (d, len) = parse_value_length(d)?;

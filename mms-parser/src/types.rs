@@ -28,7 +28,7 @@ pub struct FetchResponse {
 pub struct Wap {
     pub transaction_id: u8,
     pub message_type: PduType,
-    pub content_type: String,
+    pub content_type: mime::Mime,
     pub headers: Vec<MessageHeader>,
     #[derivative(Debug="ignore")]
     pub data: Vec<u8>,
@@ -97,11 +97,4 @@ pub enum PduType {
     Put,
     DataFragment,
     Unknown(u8),
-}
-
-#[derive(Debug, Clone)]
-// TODO: Handle content type
-pub struct ContentType{ 
-    pub content_type:  String,
-    pub content: Vec<u8>
 }

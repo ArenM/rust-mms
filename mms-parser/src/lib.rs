@@ -12,8 +12,7 @@ extern crate nom;
 #[macro_use]
 extern crate derivative;
 
-use helpers::{take_till_null, u8_to_string};
-use parser::{header_item, uintvar};
+use parser::{header_item, parse_content_type, uintvar};
 use types::{MessageHeader, PduType, VndWapMmsMessage, Wap};
 
 use nom::{
@@ -23,7 +22,7 @@ use nom::{
 impl Wap {
     // TODO: Replace Option with Result
     pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
-        match &*self.content_type {
+        match self.content_type.essence_str() {
             "application/vnd.wap.mms-message" => {
                 let ctx = ParserCtx {
                     message_class: MessageClass { has_body: false },
@@ -31,10 +30,10 @@ impl Wap {
                 let split = match split_header_fields(&*self.data, ctx) {
                     Ok((remainder, s)) => {
                         if remainder.len() > 0 {
-                            return None
+                            return None;
                         }
                         s
-                    },
+                    }
                     Err(_) => return None,
                 };
                 let parsed = parse_header_fields(&split);
@@ -68,20 +67,24 @@ fn take_all(d: &[u8]) -> IResult<&[u8], Vec<u8>> {
     Ok((e, d.to_vec()))
 }
 
-fn parse_message_headers(d: &[u8]) -> IResult<&[u8], (String, Vec<MessageHeader>)> {
+fn parse_message_headers(d: &[u8]) -> IResult<&[u8], (mime::Mime, Vec<MessageHeader>)> {
     let (d, header_length) = uintvar(d)?;
     let (d, header_content) = take(header_length)(d)?;
     let (_, (content_type, headers)) = complete(message_headers)(header_content)?;
 
-    Ok((d, (u8_to_string(content_type).unwrap(), headers)))
+    Ok((d, (content_type, headers)))
+}
+
+fn content_type(d: &[u8]) -> IResult<&[u8], mime::Mime> {
+    nom::combinator::map_parser(pdu::take_field, parse_content_type)(d)
 }
 
 // TODO: this should return a content type struct or a string rather than a &[u8]
 named!(
-    message_headers<(&[u8], Vec<MessageHeader>)>,
+    message_headers<(mime::Mime, Vec<MessageHeader>)>,
     do_parse!(
-        take!(2)
-            >> content_type: take_till_null
+        take!(0)
+            >> content_type: content_type
             >> headers: many0!(header_item)
             >> (content_type, headers)
     )
