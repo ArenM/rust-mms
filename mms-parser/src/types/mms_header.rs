@@ -5,6 +5,7 @@ use super::VndWapMmsMessage;
 pub(crate) type ShortUint = u8;
 pub(crate) type LongUint = u64;
 pub(crate) type Bool = bool;
+pub(crate) type Bytes = Vec<u8>;
 pub(crate) type ContentType = mime::Mime;
 
 // TODO: parse all variants so this isn't necessary
@@ -70,7 +71,7 @@ macro_rules! header_fields {
             fn into(self) -> Vec<u8> {
                 match self {
                     $(
-                        Self::$camel_name => vec![$binary_code],
+                        Self::$camel_name => vec![$binary_code | 0x80],
                     )+
                         Self::UnknownInt(i) => vec![i],
                         Self::ImplicitBody => Vec::new(),
@@ -147,8 +148,8 @@ header_fields! {
     // (XMmsReplyChargingID);
     // (XMmsReplyChargingSize);
     // (XMmsReportAllowed);
-    // (XMmsResponseStatus);
-    // (XMmsResponseText);
+    (XMmsResponseStatus, x_mms_response_status, Bytes, 0x12);
+    (XMmsResponseText, x_mms_response_text, String, 0x13);
     (XMmsRetrieveStatus, x_mms_retrieve_status, RetrieveStatusField, 0x19);
     // (XMmsRetrieveText);
     // (XMmsSenderVisibility);
@@ -221,6 +222,7 @@ pub enum RetrieveStatusField {
     ErrorPermanentContentUnsupported,
 }
 
+// TODO: Use a macro instead of manually writing impl TryFrom and Into
 impl TryFrom<u8> for MessageTypeField {
     type Error = &'static str;
 
@@ -251,6 +253,37 @@ impl TryFrom<u8> for MessageTypeField {
             150 => Ok(MessageTypeField::MCancelReq),
             151 => Ok(MessageTypeField::MCancelConf),
             _ => Err("Unknown value for X-Mms-Message-Type"),
+        }
+    }
+}
+
+impl Into<u8> for MessageTypeField {
+    fn into(self) -> u8 {
+        match self {
+            MessageTypeField::MSendReq => 128,
+            MessageTypeField::MSendConf => 129,
+            MessageTypeField::MNotificationInd => 130,
+            MessageTypeField::MNotifyrespInd => 131,
+            MessageTypeField::MRetrieveConf => 132,
+            MessageTypeField::MAcknowledgeInd => 133,
+            MessageTypeField::MDeliveryInd => 134,
+            MessageTypeField::MReadRecInd => 135,
+            MessageTypeField::MReadOrigInd => 136,
+            MessageTypeField::MForwardReq => 137,
+            MessageTypeField::MForwardConf => 138,
+            MessageTypeField::MMboxStoreReq => 139,
+            MessageTypeField::MMboxStoreConf => 140,
+            MessageTypeField::MMboxViewReq => 141,
+            MessageTypeField::MMboxViewConf => 142,
+            MessageTypeField::MMboxUploadReq => 143,
+            MessageTypeField::MMboxUploadConf => 144,
+            MessageTypeField::MMboxDeleteReq => 145,
+            MessageTypeField::MMboxDeleteConf => 146,
+            MessageTypeField::MMboxDescr => 147,
+            MessageTypeField::MDeleteReq => 148,
+            MessageTypeField::MDeleteConf => 149,
+            MessageTypeField::MCancelReq => 150,
+            MessageTypeField::MCancelConf => 151,
         }
     }
 }

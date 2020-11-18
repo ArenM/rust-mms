@@ -72,8 +72,12 @@ fn parse_content_type_general_form(d: &[u8]) -> IResult<&[u8], String> {
         }
     }
 
-    let params = params.join("; ");
-    let ct = [media, params].join("; ");
+    let ct = if params.len() >= 1 {
+        let params = params.join("; ");
+        [media, params].join("; ")
+    } else {
+        media
+    };
 
     Ok((d, ct))
 }
@@ -81,10 +85,11 @@ fn parse_content_type_general_form(d: &[u8]) -> IResult<&[u8], String> {
 // see wap-230-wsp-20010705-a.pdf section 8.4.2.24
 pub fn parse_content_type(d: &[u8]) -> IResult<&[u8], Mime> {
     let (d, c) = match d[0] {
-        0..=127 => parse_content_type_general_form(d),
-        128..=255 => parse_constrained_encoding(d),
+        0..=31 => parse_content_type_general_form(d),
+        32..=255 => parse_constrained_encoding(d),
     }?;
 
+    println!("content type: {}", c);
     let mime_type: Mime = c.parse().unwrap();
     Ok((&[], mime_type))
 }

@@ -1,4 +1,5 @@
-use mms_parser::{split_header_fields, parse_header_fields_with_errors, MessageClass, ParserCtx};
+use mms_parser::{split_header_fields, parse_header_fields, parse_header_fields_with_errors, MessageClass, ParserCtx};
+use mms_parser::types::VndWapMmsMessage;
 use mms_parser::parse_wap_push;
 
 use std::{fs::File, io::Read, path::PathBuf};
@@ -8,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path: String = args.value_from_str("--file")?;
     let has_body: bool = args.contains("-b") | args.contains("--body");
     let is_wap: bool = args.contains("-w") | args.contains("--wap");
+    let include_errors: bool = args.contains("-e") | args.contains("--errors");
 
     let data = read_file(&path.into()).unwrap();
 
@@ -24,8 +26,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let (_, split) = split_header_fields(&*body_data, ctx).unwrap();
-    let parsed = parse_header_fields_with_errors(&split);
-    println!("Notification Body: {:#?}", parsed);
+
+    match include_errors {
+        true => {
+            let parsed = parse_header_fields_with_errors(&split);
+            println!("Notification Body: {:#?}", parsed);
+        }
+        false => {
+            let parsed = parse_header_fields(&split);
+            println!("Notification Body: {:#?}", VndWapMmsMessage::new(parsed));
+        }
+    }
 
     Ok(())
 }

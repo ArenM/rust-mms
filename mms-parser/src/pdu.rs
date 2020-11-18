@@ -3,7 +3,7 @@
 use crate::parser::*;
 use crate::types::mms_header::{MmsHeader, MmsHeaderValue};
 
-use multimap::MultiMap;
+use crate::MultiMap;
 use nom::{bytes::complete::take, IResult};
 
 fn parse_header_name(d: &[u8]) -> IResult<&[u8], MmsHeader> {

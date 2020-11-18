@@ -5,7 +5,7 @@ pub use message_header::*;
 pub use mms_header::{MmsHeaderValue, MmsHeader};
 use PduType::*;
 
-use multimap::MultiMap;
+use crate::MultiMap;
 
 // use enum_primitive_derive::Primitive;
 // use num_enum::IntoPrimitive;
@@ -66,13 +66,18 @@ impl From<u8> for PduType {
 
 #[derive(Debug)]
 // TODO: This needs a better name
+// TODO: use getter methods instead of pub values?
 pub struct VndWapMmsMessage {
-    headers: MultiMap<MmsHeader, MmsHeaderValue>,
+    pub headers: MultiMap<MmsHeader, MmsHeaderValue>,
+    pub body: Vec<u8>,
 }
 
 impl VndWapMmsMessage {
     pub fn new(headers: MultiMap<MmsHeader, MmsHeaderValue>) -> Self {
-        Self { headers }
+        Self {
+            headers,
+            body: Vec::new(),
+        }
     }
 }
 

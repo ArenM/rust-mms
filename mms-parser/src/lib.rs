@@ -1,4 +1,4 @@
-mod encoder;
+pub mod encoder;
 mod helpers;
 mod parser;
 mod pdu;
@@ -18,6 +18,10 @@ use types::{MessageHeader, PduType, VndWapMmsMessage, Wap};
 use nom::{
     bytes::complete::take, combinator::complete, do_parse, named, number::complete::be_u8, IResult,
 };
+
+pub(crate) use ordered_multimap::ListOrderedMultimap as MultiMap;
+
+pub const MMS_VERSION: u8 = 18;
 
 impl Wap {
     // TODO: Replace Option with Result

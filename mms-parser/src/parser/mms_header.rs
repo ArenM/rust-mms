@@ -161,6 +161,8 @@ parse_header_field_builder!{
             _ => unimplemented!() // TODO: just return an error
         }
     },
+    // TODO: XMmsResponseText has a different format when the pdu type is M-Delete.conf
+    XMmsResponseText as String => |d| parse_encoded_string_value(d),
     XMmsRetrieveStatus as RetrieveStatusField => |d| -> IResult<&[u8], RetrieveStatusField> {
         // TODO: Move this to a try_from function
         // Also a seemingly successful get on 
