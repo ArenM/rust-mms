@@ -23,8 +23,16 @@ struct Args {
     /// Network interface to fetch mms messages on
     #[structopt(short, long)]
     interface: Option<String>,
+    /// A file containing the mms notification.
+    ///
+    /// This will usually be created using `mmcli -s <Message ID>
+    /// --create-file-with-data=<Notification>` see `man mmcli` or `mmcli --help` for more
+    /// information
     #[structopt(name = "Notification", parse(from_os_str))]
     file: PathBuf,
+    /// The file to store the downloaded mms message in
+    ///
+    /// Note: This file must not exist
     #[structopt(name = "Output", parse(from_os_str))]
     output: PathBuf,
 }
