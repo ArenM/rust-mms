@@ -1,5 +1,5 @@
-#![allow(unused)]
-
+// TODO: This file has a tarible name, all of its contents should probably be
+// moved to lib.rs or the parser module
 use crate::parser::*;
 use crate::types::mms_header::{MmsHeader, MmsHeaderValue};
 
@@ -40,7 +40,7 @@ pub(crate) fn take_field(d: &[u8]) -> IResult<&[u8], &[u8]> {
     Ok((d, header_value))
 }
 
-pub fn split_header_fields(d: &[u8], ctx: ParserCtx) -> IResult<&[u8], Vec<(MmsHeader, Vec<u8>)>> {
+pub fn split_header_fields(d: &[u8]) -> IResult<&[u8], Vec<(MmsHeader, Vec<u8>)>> {
     let mut header_fields = Vec::new();
     let mut data = d;
 
@@ -54,10 +54,10 @@ pub fn split_header_fields(d: &[u8], ctx: ParserCtx) -> IResult<&[u8], Vec<(MmsH
         // Header side effects
         match header_name {
             MmsHeader::ContentType => {
-                if ctx.message_class.has_body {
-                    header_fields.push((MmsHeader::ImplicitBody, d.to_vec()));
-                    data = &[]
-                }
+                // I don't know of any cases where the content type field would
+                // not be the last one, but I don't know that there aren't
+                header_fields.push((MmsHeader::ImplicitBody, d.to_vec()));
+                data = &[]
             }
             _ => {}
         }
@@ -78,6 +78,18 @@ pub fn parse_header_fields(
         .collect()
 }
 
+pub fn parse_mms_pdu(d: &[u8]) -> IResult<&[u8], crate::types::VndWapMmsMessage> {
+    let (d, split) = split_header_fields(d)?;
+
+    let mut headers = parse_header_fields(&split);
+    let body = match headers.remove(&MmsHeader::ImplicitBody).unwrap_or(vec![].into()) {
+        MmsHeaderValue::Bytes(bytes) => bytes,
+        _ => vec![]
+    };
+
+    Ok((d, crate::types::VndWapMmsMessage { headers, body }))
+}
+
 pub fn parse_header_fields_with_errors<'a>(
     fields: &'a Vec<(MmsHeader, Vec<u8>)>,
 ) -> MultiMap<MmsHeader, Result<MmsHeaderValue, nom::Err<nom::error::Error<&'a [u8]>>>> {
@@ -85,7 +97,7 @@ pub fn parse_header_fields_with_errors<'a>(
         .iter()
         .map(|i| {
             let value = match crate::parser::mms_header::parse_header_field(i.0.clone(), &*i.1) {
-                Ok((r, v)) => v,
+                Ok((_r, v)) => v,
                 Err(e) => {
                     let err = e;
                     return (i.0.clone(), Err(err));
@@ -94,17 +106,4 @@ pub fn parse_header_fields_with_errors<'a>(
             (i.0.clone(), Ok(value))
         })
         .collect()
-}
-
-#[derive(Clone)]
-pub struct ParserCtx {
-    pub message_class: MessageClass,
-}
-
-// TODO: This is a duplicat of types::mms_header::MessageTypeField we should
-// probably just parse that early, add it to the ctx varible, and impliment
-// informational functions on it
-#[derive(Clone)]
-pub struct MessageClass {
-    pub has_body: bool,
 }

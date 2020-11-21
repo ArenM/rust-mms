@@ -9,7 +9,7 @@ name = "mms_parser"
 
 [dependencies]
 derivative = "2.1.1"
-encoding = "0.2.33"
+# encoding = "0.2.33"
 log = "0.4.11"
 mime = "0.3.16"
 ordered-multimap = "0.3.1"

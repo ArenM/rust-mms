@@ -7,10 +7,11 @@ edition = "2018"
 [workspace]
 members = ["mms-parser"]
 
+[[bin]]
+name = "mmsutil"
+path = "src/main.rs"
+
 [dependencies]
-# structopt = "0.3"
-# Use my git branch with support for specifying ipv4 / ipv6 until it gets merged upstream
-# isahc = "0.9.12"
 mms-parser = { path = "./mms-parser" }
 
 [dependencies.structopt]
@@ -19,7 +20,6 @@ default-features = false
 features = []
 
 [dependencies.isahc]
-git = "https://github.com/ArenM/isahc"
-branch = "specific-ip-protocal-version"
+version = "0.9.13"
 default-features = false
 features = []

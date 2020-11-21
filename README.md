@@ -27,7 +27,7 @@ produce a smaller binary which should run faster. On postmarketos I had to
 install `openssl-dev` to get it to build, I'm not sure about other dependencies. 
 
 # optional -- installation
-copy `target/release/rust-mmsd` or `target/debug/rust-mmsd` to a directory in
+copy `target/release/mmsutil` or `target/debug/mmsutil` to a directory in
 your `$path`, ie. `/usr/local/bin/`.  
 
 # running

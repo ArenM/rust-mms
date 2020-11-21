@@ -28,10 +28,7 @@ impl Wap {
     pub fn parse_body(&self) -> Option<VndWapMmsMessage> {
         match self.content_type.essence_str() {
             "application/vnd.wap.mms-message" => {
-                let ctx = ParserCtx {
-                    message_class: MessageClass { has_body: false },
-                };
-                let split = match split_header_fields(&*self.data, ctx) {
+                let split = match split_header_fields(&*self.data) {
                     Ok((remainder, s)) => {
                         if remainder.len() > 0 {
                             return None;
