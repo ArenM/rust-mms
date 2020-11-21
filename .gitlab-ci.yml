@@ -1,0 +1,22 @@
+stages:
+  - build
+  - test
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/cargo
+
+
+# TODO: split this into seperate jobs
+build-mmsutil:
+  stage: build
+  image: rust:latest
+  script:
+    - cargo build
+    - cd mms-parser
+    - cargo build --examples
+    - cargo test
+  cache:
+    key: build-cache
+    paths:
+      - target/
+      - cargo/
