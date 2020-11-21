@@ -69,8 +69,6 @@ struct FetchArgs {
     #[structopt(name = "Notification", parse(from_os_str))]
     file: PathBuf,
     /// The file to store the downloaded mms message in
-    ///
-    /// Note: This file must not exist
     #[structopt(name = "Output", parse(from_os_str))]
     output: PathBuf,
     /// Save the response from the server to a file, very useful for debugging
@@ -81,13 +79,12 @@ struct FetchArgs {
 #[derive(StructOpt, Debug)]
 struct NetArgs {
     /// Use ipv6 only, sometimes carriers will only allow fetching messages using ipv6
-    #[structopt(short = "6", long)]
+    #[structopt(short = "6", long, group("ip_version"))]
     ipv6: bool,
     /// Use ipv4 only
-    #[structopt(short = "4", long)]
+    #[structopt(short = "4", long, group("ip_version"))]
     ipv4: bool,
-    /// Dns servers to use, sometimes it's necessary to specifically use your
-    /// carrier's dns servers
+    /// Dns servers to use, sometimes it's necessary to specifically use your carrier's dns servers
     #[structopt(short, long)]
     dns: Option<String>,
     /// Network interface to fetch mms messages on
@@ -218,15 +215,12 @@ fn fetch(args: FetchArgs) {
         client = client.interface(isahc::config::NetworkInterface::name(interface));
     }
 
-    let proto = if args.netargs.ipv6 == args.netargs.ipv4 {
-        if args.netargs.ipv6 {
-            println!("Warning: using the ipv6, and ipv4 flags together does nothing")
-        }
-        isahc::config::IpVersion::Any
-    } else if args.netargs.ipv6 {
+    let proto = if args.netargs.ipv6 {
         isahc::config::IpVersion::V6
-    } else {
+    } else if args.netargs.ipv4 {
         isahc::config::IpVersion::V4
+    } else {
+        isahc::config::IpVersion::Any
     };
 
     client = client.ip_version(proto);
