@@ -13,6 +13,13 @@ path = "src/main.rs"
 
 [dependencies]
 mms-parser = { path = "./mms-parser" }
+mime = "0.3.16"
+mime-db = "1.1.0"
+pager = "0.16.0"
+
+[dependencies.uuid]
+version = "0.8.1"
+features = ["v4"]
 
 [dependencies.structopt]
 version = "0.3"

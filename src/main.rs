@@ -1,9 +1,18 @@
-use mms_parser::{parse_mms_pdu, parse_wap_push};
+use mms_parser::{
+    encoder::encode_mms_message,
+    parse_mms_pdu, parse_wap_push,
+    types::{
+        mms_header::{MessageTypeField, MmsHeader, MmsHeaderValue},
+        VndWapMmsMessage,
+    },
+};
+
 use std::{
     fs::File,
     io::{prelude::*, Read},
     path::PathBuf,
 };
+
 use structopt::StructOpt;
 
 use isahc::{prelude::*, HttpClient};
@@ -19,6 +28,26 @@ struct AppArgs {
 enum Command {
     Fetch(FetchArgs),
     Cat(CatArgs),
+    Encode(EncodeArgs),
+}
+
+#[derive(StructOpt, Debug)]
+struct EncodeArgs {
+    /// Your phone number
+    #[structopt(short, long)]
+    from: u64,
+    /// The number of the recipient of this message
+    #[structopt(short, long, required_unless("unchecked-to"), conflicts_with("unchecked-to"))]
+    to: Option<u64>,
+    /// Used to send a message to something other than a mobile phone number
+    #[structopt(long)]
+    unchecked_to: Option<String>,
+    /// File to send
+    #[structopt(name = "File", parse(from_os_str))]
+    file: PathBuf,
+    /// File to save message to, must be sent using curl
+    #[structopt(name = "Output", parse(from_os_str))]
+    output: PathBuf,
 }
 
 #[derive(StructOpt, Debug)]
@@ -46,7 +75,7 @@ struct FetchArgs {
     output: PathBuf,
     /// Save the response from the server to a file, very useful for debugging
     #[structopt(name = "Response", parse(from_os_str))]
-    response: Option<PathBuf>
+    response: Option<PathBuf>,
 }
 
 #[derive(StructOpt, Debug)]
@@ -57,7 +86,8 @@ struct NetArgs {
     /// Use ipv4 only
     #[structopt(short = "4", long)]
     ipv4: bool,
-    /// Dns servers to use, sometimes it's necessary to specifically use your carrier's dns servers
+    /// Dns servers to use, sometimes it's necessary to specifically use your
+    /// carrier's dns servers
     #[structopt(short, long)]
     dns: Option<String>,
     /// Network interface to fetch mms messages on
@@ -71,10 +101,12 @@ fn main() {
     match args.cmd {
         Command::Fetch(args) => fetch(args),
         Command::Cat(args) => cat(args),
+        Command::Encode(args) => encode_to_file(args),
     }
 }
 
 fn cat(args: CatArgs) {
+    pager::Pager::with_default_pager("less").setup();
     let data = read_file(&args.file).expect("Could not read data file");
 
     // X-Mms-Message-Type must always be the first header of any mms pdu we can
@@ -82,16 +114,85 @@ fn cat(args: CatArgs) {
     // the binay value for X-Mms-Message-Type is 0x0C
     match data[0] {
         0x8C => {
-            let (_remainder, mut parsed) =
+            let (_remainder, parsed) =
                 parse_mms_pdu(&*data).expect("Unable to parse provided data file");
-            parsed.body = vec![];
             println!("{:#?}", parsed);
         }
         _ => {
             let (_, parsed) = parse_wap_push(&data).unwrap();
-            println!("{:#?}", parsed)
+            println!("Wap Push Headers: {:#?}", parsed);
+            let body = parsed.parse_body().expect("Unable to parse wap push body");
+            println!("Wap Push Body: {:#?}", body);
         }
     }
+}
+
+fn encode_to_file(args: EncodeArgs) {
+    const MIME_ERROR_MESSAGE: &str = "Couldn't determine content type from provided file";
+
+    if !args.file.is_file() {
+        panic!("{:?}: file not found", args.file);
+    }
+
+    if args.output.exists() {
+        panic!("Please provide an output file which doesn't exist");
+    }
+
+    let extension: &str = &args
+        .file
+        .extension()
+        .expect(MIME_ERROR_MESSAGE)
+        .to_str()
+        .expect(MIME_ERROR_MESSAGE);
+
+    let mime_type: mime::Mime = mime_db::lookup(extension)
+        .expect(MIME_ERROR_MESSAGE)
+        .parse()
+        .expect(MIME_ERROR_MESSAGE);
+
+    let mut message = VndWapMmsMessage::empty();
+
+    let to = if let Some(to) = args.to {
+        format!("+{}/TYPE=PLMN", to)
+    } else if let Some(to) = args.unchecked_to {
+        to
+    } else {
+        panic!("Either args.to, or args.unchecked to must have a value");
+    };
+
+    message.headers.insert(
+        MmsHeader::XMmsMessageType,
+        MmsHeaderValue::MessageTypeField(MessageTypeField::MSendReq),
+    );
+
+    message
+        .headers
+        .insert(MmsHeader::XMmsTransactionId, uuid::Uuid::new_v4().to_string().into());
+
+    message
+        .headers
+        .insert(MmsHeader::XMmsMMSVersion, mms_parser::MMS_VERSION.into());
+
+    message
+        .headers
+        .insert(MmsHeader::To, to.into());
+
+    message
+        .headers
+        .insert(MmsHeader::From, format!("+{}/TYPE=PLMN", args.from).into());
+
+    message
+        .headers
+        .insert(MmsHeader::ContentType, mime_type.into());
+
+    println!("Generated Message Headers: {:#?}", message.headers);
+
+    let mut file = File::open(args.file).expect("Unable to open file to send");
+    file.read_to_end(&mut message.body)
+        .expect("Error reading file");
+
+    let encoded = encode_mms_message(message);
+    write_file(&args.output, &*encoded).expect("Unable to save message to output");
 }
 
 fn fetch(args: FetchArgs) {
@@ -146,7 +247,7 @@ fn fetch(args: FetchArgs) {
     };
 
     let body = match parse_mms_pdu(&*response) {
-        Ok((_, mut parsed )) => {
+        Ok((_, mut parsed)) => {
             let body = parsed.body;
             parsed.body = vec![];
             println!("Message Response Headers: {:#?}", parsed);
@@ -154,11 +255,12 @@ fn fetch(args: FetchArgs) {
             if let Some(response_location) = args.response {
                 // TODO: We should probably continue and print instead of failing and printing an
                 // error
-                write_file(&response_location, &*response).expect("Unable to save the response from the server");
+                write_file(&response_location, &*response)
+                    .expect("Unable to save the response from the server");
             }
 
             body
-        },
+        }
         Err(err) => {
             println!("{:?}", err);
             println!("WARNING: could not parse response from server, saving response anyway");

@@ -79,6 +79,13 @@ impl VndWapMmsMessage {
             body: Vec::new(),
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            headers: MultiMap::new(),
+            body: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
