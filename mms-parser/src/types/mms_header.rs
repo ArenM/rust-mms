@@ -131,7 +131,6 @@ header_fields! {
     (XMmsMessageClass, x_mms_message_class, ClassIdentifier, 0x0A);
     // (XMmsMessageCount);
     (XMmsMessageSize, x_mms_message_size, LongUint, 0x0E);
-    // I don't know why the compiler insists that this one needs type annotations
     (XMmsMessageType, x_mms_message_type, MessageTypeField, 0x0C);
     // (XMmsPreviouslySentBy);
     // (XMmsPreviouslySentDate);

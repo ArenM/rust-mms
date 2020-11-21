@@ -12,5 +12,5 @@ pub enum MessageHeader {
     // XWapInitiatorUri,
     AcceptCharset(u8), // This should change to a charset struct
     // AcceptRanges,
-    UnknownHeader(u8),
+    UnknownHeader((u8, Vec<u8>)),
 }

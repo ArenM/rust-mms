@@ -83,13 +83,24 @@ fn content_type(d: &[u8]) -> IResult<&[u8], mime::Mime> {
     nom::combinator::map_parser(pdu::take_field, parse_content_type)(d)
 }
 
+pub fn wap_header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
+    // This can be a string, handle that case
+    let (d, header_byte) = take(1u8)(d)?;
+    let header_byte = header_byte[0] & 0x7F;
+    let (d, raw_field) = take_field(d)?;
+
+    let (_, parsed_field) = header_item(header_byte, raw_field)?;
+
+    Ok((d, parsed_field))
+}
+
 // TODO: this should return a content type struct or a string rather than a &[u8]
 named!(
     message_headers<(mime::Mime, Vec<MessageHeader>)>,
     do_parse!(
         take!(0)
             >> content_type: content_type
-            >> headers: many0!(header_item)
+            >> headers: many0!(wap_header_item)
             >> (content_type, headers)
     )
 );

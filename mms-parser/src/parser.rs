@@ -11,7 +11,7 @@ pub use content_type::*;
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take, take_till, take_while1},
+    bytes::complete::{tag, take, take_till, take_till1, take_while1},
     IResult,
 };
 
@@ -23,7 +23,7 @@ pub fn take_text_string(d: &[u8]) -> IResult<&[u8], &[u8]> {
 }
 
 pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
-    let (d, val) = take_till(|c| c == '\u{0}' as u8)(d)?;
+    let (d, val) = take_till1(|c| c == '\u{0}' as u8)(d)?;
     // TODO: if take_text_string ends with a 0 byte, then this can just tag 0
     let d = if d.len() >= 1 && d[0] == 0 {
         &d[1..]
