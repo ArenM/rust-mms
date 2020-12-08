@@ -30,16 +30,16 @@ about others.
 produce a smaller binary which should run faster.
 
 # Optional -- Installation
-copy `target/release/mmsutil` or `target/debug/mmsutil` to a directory in
-your `$path`, ie. `/usr/local/bin/`.  
+copy `target/release/mmsutil` or `target/debug/mmsutil` to a directory in your
+`$path`, ie. `/usr/local/bin/`.  
 
 # Running
 use `cargo run -- --help` or `rust-mmsd --help` if you installed using the
 previous step to get usage information.
 
-To send or receive a message you must connect to the MMSC through the mode, which is the
-typically wwan0 interface on the PinePhone. It is sometimes also necessary to
-perform DNS lookups using your carriers DNS servers.
+To send or receive a message you must connect to the MMSC through the mode,
+which is the typically wwan0 interface on the PinePhone. It is sometimes also
+necessary to perform DNS lookups using your carriers DNS servers.
 
 The MMSC is your carriers server that handle MMS messages. The easiest method to
 find it is by searching for apn settings for your carrier, and looking for the
@@ -50,17 +50,42 @@ Use `mmcli -s <Message ID> --create-file-with-data=<Notification>` to save the
 push notification to a file that can be passed to `mmsutil`.
 
 Run `mmsutil fetch <Notification> <Output File>` to download the message. You
-may also need to use the `--dns` and `--interface` flags to download messages
-through the MMSC. See `mmsutil fetch --help` for more information.
+may also need to use the `--dns` and `--interface` flags to download messages.
+See `mmsutil fetch --help` for more information, and Troubleshooting / Dns
+queiries.
 
 ## Sending Messages
 Sending messages is still a work in progress however if you can get any useful
 errors I'd like to know.
 
-Messages can be encoded using `mmutil encode` see `mmutil encode --help` for
+Messages can be encoded using `mmsutil encode` see `mmsutil encode --help` for
 more information about encoding messages.
 
 Once you have an encoded message it can be sent using something like `curl -vv
 --interface wwan0 --data-binary "@encoded-message.bin" -H "Content-Type:
 application/vnd.wap.mms-message" -H "Expect:"
 "${mmsc}" -o response.bin`
+ 
+# Troubleshooting
+
+## Dns queiries
+In some cases dns queries must be handled by the carrier. If they are not it
+will often result in inentelligable errors.
+
+The most robust solution to this currently is to disable all network connections
+except for the connection which goes through the modem. It should also be
+possible to edit `/etc/resolv.conf` and remove all entries except for the
+carriers dns servers, or to pass the dns servers to `curl` / `mmsutil`.
+
+TLDR:
+If you get errors try disabling every network interface except the modem.
+
+Note:
+In the future this software will automatically handle selecting the right dns
+server. I need to make sure dns queries are sent over the modem's interface.
+
+# Specifications
+I've used information from the oma Multi Media Messaging specs:
+http://www.openmobilealliance.org/release/MMS/
+and parts of the OMA Wireless Application Protocal spec:
+http://www.openmobilealliance.org/wp/Affiliates/WAP.html
