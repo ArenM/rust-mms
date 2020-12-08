@@ -1,3 +1,4 @@
+pub mod content_type_codes;
 pub mod message_header;
 pub mod mms_header;
 
