@@ -4,8 +4,10 @@ mod message_header;
 mod content_type;
 mod uintvar;
 pub(crate) mod mms_header;
+mod multipart;
 
 pub use message_header::*;
+pub use multipart::parse_multipart_body;
 pub use uintvar::*;
 pub use content_type::*;
 

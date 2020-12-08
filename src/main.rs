@@ -3,12 +3,13 @@ use mms_parser::{
     parse_mms_pdu, parse_wap_push,
     types::{
         mms_header::{FromField, MessageTypeField, MmsHeader, MmsHeaderValue},
+        message_header::MessageHeader,
         VndWapMmsMessage,
     },
 };
 
 use std::{
-    fs::File,
+    fs::{DirBuilder, File},
     io::{prelude::*, Read},
     path::PathBuf,
 };
@@ -28,6 +29,7 @@ struct AppArgs {
 enum Command {
     Fetch(FetchArgs),
     Cat(CatArgs),
+    Decode(DecodeArgs),
     Encode(EncodeArgs),
 }
 
@@ -58,6 +60,16 @@ struct CatArgs {
     /// Notification file to display
     #[structopt(name = "File", parse(from_os_str))]
     file: PathBuf,
+}
+
+#[derive(StructOpt, Debug)]
+struct DecodeArgs {
+    /// MMS Message to decode
+    #[structopt(name = "File", parse(from_os_str))]
+    file: PathBuf,
+    /// Directory to save message data to
+    #[structopt(name = "Output", parse(from_os_str))]
+    out: PathBuf,
 }
 
 #[derive(StructOpt, Debug)]
@@ -101,6 +113,7 @@ fn main() {
     match args.cmd {
         Command::Fetch(args) => fetch(args),
         Command::Cat(args) => cat(args),
+        Command::Decode(args) => command_decode(args),
         Command::Encode(args) => encode_to_file(args),
     }
 }
@@ -114,17 +127,116 @@ fn cat(args: CatArgs) {
     // the binay value for X-Mms-Message-Type is 0x0C
     match data[0] {
         0x8C => {
-            let (_remainder, parsed) =
-                parse_mms_pdu(&*data).expect("Unable to parse provided data file");
-            println!("{:#?}", parsed);
+            println!("Mms Data");
+            let (_remainder, parsed) = parse_mms_pdu(&*data)
+                .expect("Unable to parse provided data file");
+
+            println!("Headers: {:#?}", parsed.headers);
+
+            if parsed.body.len() > 0 {
+                let content_type = parsed.content_type().unwrap();
+                if content_type.essence_str()
+                    == "application/vnd.wap.multipart.mixed"
+                {
+                    let body = mms_parser::parse_multipart_body(&parsed.body)
+                        .unwrap()
+                        .1;
+                    println!("Body: {:#?}", body);
+                } else {
+                    let body = String::from_utf8_lossy(&parsed.body);
+                    println!("Body: {}", body);
+                }
+            }
         }
         _ => {
+            println!("Type: WAP Data");
+
             let (_, parsed) = parse_wap_push(&data).unwrap();
             println!("Wap Push Headers: {:#?}", parsed);
-            let body = parsed.parse_body().expect("Unable to parse wap push body");
+
+            let body =
+                parsed.parse_body().expect("Unable to parse wap push body");
             println!("Wap Push Body: {:#?}", body);
         }
     }
+}
+
+fn command_decode(args: DecodeArgs) {
+    let data = read_file(&args.file).expect("Could not read data file");
+
+    if data[0] != 0x8C {
+        panic!("Unknown data type, please provide a mms pdu");
+    }
+
+    let (_remainder, message) =
+        parse_mms_pdu(&*data).expect("Unable to parse provided data file");
+
+    println!("Headers: {:#?}", message.headers);
+
+    if message.body.len() == 0 {
+        println!(
+            "WARNING: data file contained no body part, no new data was saved"
+        );
+        return;
+    }
+
+    decode(&message, args.out).unwrap();
+}
+
+fn decode(
+    message: &mms_parser::types::VndWapMmsMessage,
+    mut out: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: Remove unwrap
+    out.push(message.message_id().unwrap());
+
+    if out.exists() {
+        return Err(format!(
+            "It looks like a message with the same id has already \
+                been decoded, if you would like to overwrite it can remove {:?}",
+            out
+        ))?;
+    }
+
+    DirBuilder::new().create(&out)?;
+
+    // TODO: replace with question mark
+    let content_type = message.content_type().unwrap();
+
+    if content_type
+        .essence_str()
+        .starts_with("application/vnd.wap.multipart")
+    {
+        // TODO: Remove unwrap
+        let body = mms_parser::parse_multipart_body(&message.body).unwrap().1;
+        let mut error = Ok(());
+
+        body.iter().for_each(|item| {
+            let content_location = item
+                .headers
+                .iter()
+                .find_map(|h| match h {
+                    MessageHeader::ContentLocation(loc) => Some(loc.clone()),
+                    _ => None,
+                })
+                .unwrap_or(uuid::Uuid::new_v4().to_string());
+
+            let mut file_path = out.clone();
+            file_path.push(content_location);
+
+            match write_file(&file_path, &*item.body) {
+                Err(e) => error = Err(e),
+                _ => {}
+            };
+        });
+
+        error?;
+    } else {
+        out.push(uuid::Uuid::new_v4().to_string());
+        write_file(&out, &*message.body)?;
+    };
+
+    Ok(())
 }
 
 fn encode_to_file(args: EncodeArgs) {

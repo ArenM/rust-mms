@@ -4,6 +4,7 @@ mod parser;
 mod pdu;
 pub mod types;
 
+pub use parser::parse_multipart_body;
 pub use pdu::*;
 
 #[macro_use]

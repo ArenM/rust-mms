@@ -1,7 +1,5 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
-/// This only includes the fields needed to parse mms push notifications
-/// this should be changed in the future
 // TODO: this might be overkill, it might be easier to just translate
 // header bytes to string names, and create a hashmap of them
 pub enum MessageHeader {
@@ -12,5 +10,7 @@ pub enum MessageHeader {
     // XWapInitiatorUri,
     AcceptCharset(u8), // This should change to a charset struct
     // AcceptRanges,
+    ContentId(String),
+    ContentLocation(String),
     UnknownHeader((u8, Vec<u8>)),
 }

@@ -1,6 +1,7 @@
 pub mod content_type_codes;
 pub mod message_header;
 pub mod mms_header;
+pub mod multipart;
 
 pub use message_header::*;
 pub use mms_header::{MmsHeaderValue, MmsHeader};
