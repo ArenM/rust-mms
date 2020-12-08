@@ -1,10 +1,11 @@
 use nom::bytes::complete::take;
 use nom::IResult;
 
-// TODO: a usize should work in most cases, but there's no reason
-// a uintvar can't be bigger than a usize. It would be better to use something like num-bigint
-/// A uintvar is a composed of 8 bit sequences, the first bit is 1 when ther are following
-/// sequences, and 0 when it is the last byte
+// TODO: a usize should work in most cases, but there's no reason a uintvar
+// can't be bigger than a usize. It would be better to use something like
+// num-bigint
+/// A uintvar is a composed of 8 bit sequences, the first bit is 1 when ther are
+/// following sequences, and 0 when it is the last byte
 pub fn uintvar(d: &[u8]) -> IResult<&[u8], u64> {
     let mut nums: Vec<u8> = Vec::new();
     let mut d = d;
@@ -28,7 +29,7 @@ fn tally_u7_nums(nums: &[u8]) -> u64 {
 
     nums.reverse();
     nums.iter()
-        .fold((0u64,0), |(acc, places), x| {
+        .fold((0u64, 0), |(acc, places), x| {
             let x = x.clone() as u64;
             (acc + (x << 7 * places), places + 1)
         }).0

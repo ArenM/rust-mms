@@ -1,7 +1,7 @@
 use super::*;
 use crate::types::content_type_codes::CONTENT_TYPE_CODES;
 use mime::Mime;
-use nom::{combinator::map, IResult};
+use nom::IResult;
 
 fn well_known_charset(chr_set: u64) -> Option<String> {
     // From http://www.iana.org/assignments/character-sets/character-sets.xhtml
@@ -112,7 +112,7 @@ pub fn parse_content_type(d: &[u8]) -> IResult<&[u8], Mime> {
     }?;
 
     let mime_type: Mime = c.parse().unwrap();
-    Ok((&[], mime_type))
+    Ok((d, mime_type))
 }
 
 #[cfg(test)]
@@ -133,7 +133,7 @@ mod test {
 
     #[test]
     fn short_int() {
-        let (r, c) = parse_content_type(&[0xB3]).unwrap();
+        let (_r, c) = parse_content_type(&[0xB3]).unwrap();
 
         assert_eq!(c, mime("application/vnd.wap.multipart.related"))
     }

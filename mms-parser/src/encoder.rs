@@ -16,9 +16,14 @@ pub fn encode_mms_message(message: VndWapMmsMessage) -> Vec<u8> {
     // headers, in that order, and if the PDU contains a message body the
     // Content Type MUST be the last header field, followed by message body."
 
-    let encoded_headers: Vec<Vec<u8>> = message.headers.iter().map(|header| {
-        mms_header::encode_header_field(header.0.clone(), header.1.clone()).unwrap()
-    }).collect();
+    let encoded_headers: Vec<Vec<u8>> = message
+        .headers
+        .iter()
+        .map(|header| {
+            mms_header::encode_header_field(header.0.clone(), header.1.clone())
+                .unwrap()
+        })
+        .collect();
 
     encoded.append(&mut encoded_headers.concat());
     encoded.append(&mut message.body);
@@ -34,7 +39,7 @@ fn encode_string(v: String) -> Vec<u8> {
     let mut bytes: Vec<u8> = v.into_bytes().to_vec();
     bytes.push(0);
     if !(32..=127).contains(&bytes[0]) {
-        bytes.insert(0, '"' as u8);
+        bytes.insert(0, 127);
     }
     bytes
 }
@@ -48,7 +53,7 @@ fn encode_bool(v: bool) -> u8 {
 
 fn encode_short_integer(v: u8) -> Result<Vec<u8>, &'static str> {
     if v > 0x7F {
-        return Err("Integer to large to encode as a short-integer")
+        return Err("Integer to large to encode as a short-integer");
     }
 
     Ok(vec![v | 0x80])

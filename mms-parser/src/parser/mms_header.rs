@@ -3,8 +3,8 @@ use crate::types::mms_header::MmsHeader::*;
 use crate::types::mms_header::*;
 
 use log::debug;
-use nom::{bytes::complete::take, IResult};
 use mime::Mime;
+use nom::{bytes::complete::take, IResult};
 use std::convert::TryFrom;
 
 pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
@@ -27,7 +27,8 @@ pub fn parse_enum_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
 }
 
 pub fn parse_string_class(d: &[u8]) -> IResult<&[u8], ClassIdentifier> {
-    let (d, class) = nom::bytes::complete::take_till1(|c| c == '\u{0}' as u8)(d)?;
+    let (d, class) =
+        nom::bytes::complete::take_till1(|c| c == '\u{0}' as u8)(d)?;
     let class = crate::helpers::u8_to_string(class).unwrap();
 
     Ok((d, ClassIdentifier::Other(class)))
@@ -59,7 +60,7 @@ macro_rules! parse_header_field_builder {
 }
 // NOTE: I haven't properly tested parsers which are commented out, they should work, but I'd like
 // to check first
-parse_header_field_builder!{
+parse_header_field_builder! {
     // TODO: I haven't been able to properly parse content-type yet
     ContentType as Mime => |d| parse_content_type(d),
     Date as LongUint => |d| parse_long_integer(d),
@@ -75,7 +76,7 @@ parse_header_field_builder!{
                     d,
                     parse_encoded_string_value(data)?.1,
             )),
-            129 => unimplemented!(),
+            129 => Ok((data, "<insert>".to_string())),
             _ => {
                 //error
                 panic!("Unexpected Token: {:?}", token);
@@ -165,7 +166,7 @@ parse_header_field_builder!{
     XMmsResponseText as String => |d| parse_encoded_string_value(d),
     XMmsRetrieveStatus as RetrieveStatusField => |d| -> IResult<&[u8], RetrieveStatusField> {
         // TODO: Move this to a try_from function
-        // Also a seemingly successful get on 
+        // Also a seemingly successful get on
         let (d, status) = take(1u8)(d)?;
 
         let status = match status[0] {

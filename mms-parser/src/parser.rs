@@ -1,19 +1,19 @@
 // TODO: This will go away when parsers for all / most headers are implemented
-#![allow(unused)]
-mod message_header;
 mod content_type;
-mod uintvar;
+mod message_header;
 pub(crate) mod mms_header;
 mod multipart;
+mod uintvar;
 
+pub use content_type::*;
 pub use message_header::*;
 pub use multipart::parse_multipart_body;
 pub use uintvar::*;
-pub use content_type::*;
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take, take_till, take_till1, take_while1},
+    bytes::complete::{tag, take, take_till, take_till1},
+    combinator::opt,
     IResult,
 };
 
@@ -26,12 +26,9 @@ pub fn take_text_string(d: &[u8]) -> IResult<&[u8], &[u8]> {
 
 pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
     let (d, val) = take_till1(|c| c == '\u{0}' as u8)(d)?;
+
     // TODO: if take_text_string ends with a 0 byte, then this can just tag 0
-    let d = if d.len() >= 1 && d[0] == 0 {
-        &d[1..]
-    } else {
-        d
-    };
+    let (d, _) = opt(tag("\u{0}"))(d)?;
 
     if val[0] >= 128 {
         return Err(nom::Err::Error(nom::error::Error::new(
@@ -40,7 +37,7 @@ pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
         )));
     }
 
-    let val = if val[0] == '"' as u8 && val[1] >= 128 {
+    let val = if val[0] == 0x7f && val[1] >= 128 {
         &val[1..]
     } else {
         val
@@ -55,6 +52,14 @@ pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
     }?;
 
     Ok((d, val))
+}
+
+pub fn parse_quoted_string(d: &[u8]) -> IResult<&[u8], String> {
+    let (d, _) = tag("\"")(d)?;
+    let (d, v) = take_till1(|c| c == 0)(d)?;
+    let (d, _) = opt(tag("\u{0}"))(d)?;
+
+    Ok((d, unsafe { String::from_utf8_unchecked(v.to_vec()) }))
 }
 
 pub fn parse_short_integer(d: &[u8]) -> IResult<&[u8], u8> {
@@ -149,15 +154,18 @@ mod test {
 
     #[test]
     fn text_string_with_quote() {
-        let (_, val) = parse_text_string("\"something\u{0}".as_bytes()).unwrap();
+        let (_, val) =
+            parse_text_string("\x7fsomething\u{0}".as_bytes()).unwrap();
 
-        assert_eq!(val, "\"something");
+        assert_eq!(val, "\x7fsomething");
     }
 
     #[test]
-    fn quoted_text_string() {
-        let (_, val1) = parse_text_string("\"\u{128}etc...\u{0}".as_bytes()).unwrap();
-        let (_, val2) = parse_text_string("\"\u{255}etc...\u{0}".as_bytes()).unwrap();
+    fn text_string_quoted_value() {
+        let (_, val1) =
+            parse_text_string("\x7f\u{128}etc...\u{0}".as_bytes()).unwrap();
+        let (_, val2) =
+            parse_text_string("\x7f\u{255}etc...\u{0}".as_bytes()).unwrap();
 
         assert_eq!(val1, "\u{128}etc...");
         assert_eq!(val2, "\u{255}etc...");

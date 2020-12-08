@@ -84,7 +84,7 @@ pub fn parse_mms_pdu(d: &[u8]) -> IResult<&[u8], crate::types::VndWapMmsMessage>
     let mut headers = parse_header_fields(&split);
     let body = match headers.remove(&MmsHeader::ImplicitBody).unwrap_or(vec![].into()) {
         MmsHeaderValue::Bytes(bytes) => bytes,
-        _ => vec![]
+        _ => vec![],
     };
 
     Ok((d, crate::types::VndWapMmsMessage { headers, body }))
@@ -96,7 +96,10 @@ pub fn parse_header_fields_with_errors<'a>(
     fields
         .iter()
         .map(|i| {
-            let value = match crate::parser::mms_header::parse_header_field(i.0.clone(), &*i.1) {
+            let value = match crate::parser::mms_header::parse_header_field(
+                i.0.clone(),
+                &*i.1,
+            ) {
                 Ok((_r, v)) => v,
                 Err(e) => {
                     let err = e;

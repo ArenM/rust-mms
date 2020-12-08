@@ -48,7 +48,11 @@ mms_header_from!(RetrieveStatusField, RetrieveStatusField);
 
 // TODO: Generalize this
 macro_rules! header_fields {
-    ($name:ident, $(($camel_name:ident, $under_name:ident, $type:ident, $binary_code:expr));+$(;)*) => {
+    ($name:ident, $((
+                $camel_name:ident,
+                $under_name:ident,
+                $type:ident,
+                $binary_code:expr));+$(;)*) => {
         #[derive(Debug, Hash, PartialEq, Eq, Clone)]
         pub enum $name {
             $(

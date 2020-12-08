@@ -4,7 +4,7 @@ pub mod mms_header;
 pub mod multipart;
 
 pub use message_header::*;
-pub use mms_header::{MmsHeaderValue, MmsHeader};
+pub use mms_header::{MmsHeader, MmsHeaderValue};
 use PduType::*;
 
 use crate::MultiMap;
@@ -19,7 +19,7 @@ pub struct FetchResponse {
     pub message_type: PduType,
     pub content_type: String,
     pub headers: Vec<MessageHeader>,
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     pub data: Vec<u8>,
 }
 
@@ -32,7 +32,7 @@ pub struct Wap {
     pub message_type: PduType,
     pub content_type: mime::Mime,
     pub headers: Vec<MessageHeader>,
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     pub data: Vec<u8>,
 }
 

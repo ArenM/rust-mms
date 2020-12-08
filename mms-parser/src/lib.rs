@@ -17,7 +17,11 @@ use parser::{header_item, parse_content_type, uintvar};
 use types::{MessageHeader, PduType, VndWapMmsMessage, Wap};
 
 use nom::{
-    bytes::complete::take, combinator::complete, do_parse, named, number::complete::be_u8, IResult,
+    bytes::complete::take,
+    combinator::{all_consuming, map_parser},
+    do_parse, named,
+    number::complete::be_u8,
+    IResult,
 };
 
 pub(crate) use ordered_multimap::ListOrderedMultimap as MultiMap;
@@ -69,16 +73,19 @@ fn take_all(d: &[u8]) -> IResult<&[u8], Vec<u8>> {
     Ok((e, d.to_vec()))
 }
 
-fn parse_message_headers(d: &[u8]) -> IResult<&[u8], (mime::Mime, Vec<MessageHeader>)> {
+fn parse_message_headers(
+    d: &[u8],
+) -> IResult<&[u8], (mime::Mime, Vec<MessageHeader>)> {
     let (d, header_length) = uintvar(d)?;
     let (d, header_content) = take(header_length)(d)?;
-    let (_, (content_type, headers)) = complete(message_headers)(header_content)?;
+    let (_, (content_type, headers)) =
+        all_consuming(message_headers)(header_content)?;
 
     Ok((d, (content_type, headers)))
 }
 
 fn content_type(d: &[u8]) -> IResult<&[u8], mime::Mime> {
-    nom::combinator::map_parser(pdu::take_field, parse_content_type)(d)
+    map_parser(pdu::take_field, parse_content_type)(d)
 }
 
 pub fn wap_header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
@@ -94,7 +101,7 @@ pub fn wap_header_item(d: &[u8]) -> IResult<&[u8], MessageHeader> {
 
 // TODO: this should return a content type struct or a string rather than a &[u8]
 named!(
-    message_headers<(mime::Mime, Vec<MessageHeader>)>,
+    pub message_headers<(mime::Mime, Vec<MessageHeader>)>,
     do_parse!(
         take!(0)
             >> content_type: content_type

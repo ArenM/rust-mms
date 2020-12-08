@@ -2,7 +2,6 @@ use nom::{do_parse, named};
 // use encoding::{Encoding, DecoderTrap};
 // use encoding::all::UTF_8;
 
-
 pub fn u8_to_string(i: &[u8]) -> Result<String, std::string::FromUtf8Error> {
     String::from_utf8(i.to_vec())
 }
