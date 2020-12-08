@@ -16,6 +16,7 @@ pub enum MmsHeaderValue {
     ShortUint(u8),
     String(String),
     Bytes(Vec<u8>),
+    FromField(FromField),
     ContentType(mime::Mime),
     ExpiryField(ExpiryField),
     ClassIdentifier(ClassIdentifier),
@@ -38,6 +39,7 @@ mms_header_from!(LongUint, u64);
 mms_header_from!(ShortUint, u8);
 mms_header_from!(String, String);
 mms_header_from!(Bytes, Vec<u8>);
+mms_header_from!(FromField, FromField);
 mms_header_from!(ContentType, ContentType);
 mms_header_from!(ExpiryField, ExpiryField);
 mms_header_from!(ClassIdentifier, ClassIdentifier);
@@ -160,6 +162,12 @@ header_fields! {
     // (XMmsStored);
     // (XMmsTotals);
     (XMmsTransactionId, x_mms_transaction_id, String, 0x18)
+}
+
+#[derive(Debug, Clone)]
+pub enum FromField {
+    Address(String),
+    InsertAddress,
 }
 
 #[derive(Debug, Clone)]

@@ -39,6 +39,13 @@ fn encode_string(v: String) -> Vec<u8> {
     bytes
 }
 
+fn encode_bool(v: bool) -> u8 {
+    match v {
+        true => 128,
+        false => 129,
+    }
+}
+
 fn encode_short_integer(v: u8) -> Result<Vec<u8>, &'static str> {
     if v > 0x7F {
         return Err("Integer to large to encode as a short-integer")

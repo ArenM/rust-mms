@@ -2,7 +2,7 @@ use mms_parser::{
     encoder::encode_mms_message,
     parse_mms_pdu, parse_wap_push,
     types::{
-        mms_header::{MessageTypeField, MmsHeader, MmsHeaderValue},
+        mms_header::{FromField, MessageTypeField, MmsHeader, MmsHeaderValue},
         VndWapMmsMessage,
     },
 };
@@ -35,13 +35,16 @@ enum Command {
 struct EncodeArgs {
     /// Your phone number
     #[structopt(short, long)]
-    from: u64,
+    from: Option<u64>,
     /// The number of the recipient of this message
     #[structopt(short, long, required_unless("unchecked-to"), conflicts_with("unchecked-to"))]
     to: Option<u64>,
     /// Used to send a message to something other than a mobile phone number
     #[structopt(long)]
     unchecked_to: Option<String>,
+    /// Subject of the message
+    #[structopt(long)]
+    subject: Option<String>,
     /// File to send
     #[structopt(name = "File", parse(from_os_str))]
     file: PathBuf,
@@ -162,9 +165,10 @@ fn encode_to_file(args: EncodeArgs) {
         MmsHeaderValue::MessageTypeField(MessageTypeField::MSendReq),
     );
 
-    message
-        .headers
-        .insert(MmsHeader::XMmsTransactionId, uuid::Uuid::new_v4().to_string().into());
+    message.headers.insert(
+        MmsHeader::XMmsTransactionId,
+        uuid::Uuid::new_v4().to_string().into(),
+    );
 
     message
         .headers
@@ -172,11 +176,24 @@ fn encode_to_file(args: EncodeArgs) {
 
     message
         .headers
-        .insert(MmsHeader::To, to.into());
+        .insert(MmsHeader::XMmsDeliveryReport, true.into());
 
-    message
-        .headers
-        .insert(MmsHeader::From, format!("+{}/TYPE=PLMN", args.from).into());
+    message.headers.insert(MmsHeader::To, to.into());
+
+    if let Some(from) = args.from {
+        message.headers.insert(
+            MmsHeader::From,
+            FromField::Address(format!("+{}/TYPE=PLMN", from)).into(),
+        );
+    } else {
+        message
+            .headers
+            .insert(MmsHeader::From, FromField::InsertAddress.into());
+    }
+
+    if let Some(subject) = args.subject {
+        message.headers.insert(MmsHeader::Subject, subject.into());
+    }
 
     message
         .headers
@@ -189,7 +206,8 @@ fn encode_to_file(args: EncodeArgs) {
         .expect("Error reading file");
 
     let encoded = encode_mms_message(message);
-    write_file(&args.output, &*encoded).expect("Unable to save message to output");
+    write_file(&args.output, &*encoded)
+        .expect("Unable to save message to output");
 }
 
 fn fetch(args: FetchArgs) {
