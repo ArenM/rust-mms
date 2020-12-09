@@ -88,6 +88,16 @@ impl VndWapMmsMessage {
             body: Vec::new(),
         }
     }
+
+    pub fn has_multipart_body(&self) -> bool {
+        let ct = match self.content_type() {
+            Some(c) => c,
+            None => return false,
+        };
+
+        ct.essence_str()
+            .starts_with("application/vnd.wap.multipart")
+    }
 }
 
 #[derive(Debug)]

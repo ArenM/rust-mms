@@ -16,6 +16,7 @@ mms-parser = { path = "./mms-parser" }
 mime = "0.3.16"
 mime-db = "1.1.0"
 pager = "0.16.0"
+anyhow = "1.0.34"
 
 [dependencies.uuid]
 version = "0.8.1"

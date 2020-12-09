@@ -2,8 +2,8 @@ use mms_parser::{
     encoder::encode_mms_message,
     parse_mms_pdu, parse_wap_push,
     types::{
-        mms_header::{FromField, MessageTypeField, MmsHeader, MmsHeaderValue},
         message_header::MessageHeader,
+        mms_header::{FromField, MessageTypeField, MmsHeader, MmsHeaderValue},
         VndWapMmsMessage,
     },
 };
@@ -14,9 +14,12 @@ use std::{
     path::PathBuf,
 };
 
-use structopt::StructOpt;
+#[macro_use]
+extern crate anyhow;
 
 use isahc::{prelude::*, HttpClient};
+use structopt::StructOpt;
+use uuid::Uuid;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "mmsutil")]
@@ -39,7 +42,12 @@ struct EncodeArgs {
     #[structopt(short, long)]
     from: Option<u64>,
     /// The number of the recipient of this message
-    #[structopt(short, long, required_unless("unchecked-to"), conflicts_with("unchecked-to"))]
+    #[structopt(
+        short,
+        long,
+        required_unless("unchecked-to"),
+        conflicts_with("unchecked-to")
+    )]
     to: Option<u64>,
     /// Used to send a message to something other than a mobile phone number
     #[structopt(long)]
@@ -107,15 +115,17 @@ struct NetArgs {
     interface: Option<String>,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = AppArgs::from_args();
 
     match args.cmd {
         Command::Fetch(args) => fetch(args),
         Command::Cat(args) => cat(args),
-        Command::Decode(args) => command_decode(args),
+        Command::Decode(args) => command_decode(args)?,
         Command::Encode(args) => encode_to_file(args),
     }
+
+    Ok(())
 }
 
 fn cat(args: CatArgs) {
@@ -128,16 +138,14 @@ fn cat(args: CatArgs) {
     match data[0] {
         0x8C => {
             println!("Mms Data");
+
             let (_remainder, parsed) = parse_mms_pdu(&*data)
                 .expect("Unable to parse provided data file");
 
             println!("Headers: {:#?}", parsed.headers);
 
             if parsed.body.len() > 0 {
-                let content_type = parsed.content_type().unwrap();
-                if content_type.essence_str()
-                    == "application/vnd.wap.multipart.mixed"
-                {
+                if parsed.has_multipart_body() {
                     let body = mms_parser::parse_multipart_body(&parsed.body)
                         .unwrap()
                         .1;
@@ -161,7 +169,7 @@ fn cat(args: CatArgs) {
     }
 }
 
-fn command_decode(args: DecodeArgs) {
+fn command_decode(args: DecodeArgs) -> anyhow::Result<()> {
     let data = read_file(&args.file).expect("Could not read data file");
 
     if data[0] != 0x8C {
@@ -177,49 +185,51 @@ fn command_decode(args: DecodeArgs) {
         println!(
             "WARNING: data file contained no body part, no new data was saved"
         );
-        return;
+        return Ok(());
     }
 
-    decode(&message, args.out).unwrap();
+    decode(&message, args.out)
 }
 
+// ) -> Result<(), Box<dyn std::error::Error>> {
 fn decode(
     message: &mms_parser::types::VndWapMmsMessage,
     mut out: PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Remove unwrap
-    out.push(message.message_id().unwrap());
+) -> anyhow::Result<()> {
+    out.push(message.message_id().unwrap_or(&Uuid::new_v4().to_string()));
 
+    // TODO: check for file conflicts instead of message id conflicts
     if out.exists() {
-        return Err(format!(
-            "It looks like a message with the same id has already \
-                been decoded, if you would like to overwrite it can remove {:?}",
-            out
-        ))?;
+        bail!("It looks like a message with the same id has already \
+                been decoded, if you would like to overwrite it can remove {:?}", out);
     }
 
     DirBuilder::new().create(&out)?;
 
-    // TODO: replace with question mark
-    let content_type = message.content_type().unwrap();
-
-    if content_type
-        .essence_str()
-        .starts_with("application/vnd.wap.multipart")
-    {
-        // TODO: Remove unwrap
-        let body = mms_parser::parse_multipart_body(&message.body).unwrap().1;
+    use MessageHeader::ContentLocation;
+    if message.has_multipart_body() {
+        let body = mms_parser::parse_multipart_body(&message.body)
+            .map_err(|e| {
+                // TODO: This is the correct solution here, however it's blocked by
+                // https://github.com/Geal/nom/issues/1254
+                // e.to_owned();
+                anyhow!(e.to_string())
+            })?
+            .1;
         let mut error = Ok(());
 
         body.iter().for_each(|item| {
             let content_location = item
                 .headers
                 .iter()
-                .find_map(|h| match h {
-                    MessageHeader::ContentLocation(loc) => Some(loc.clone()),
-                    _ => None,
+                .find_map(|h| {
+                    if let ContentLocation(h) = h {
+                        Some(h.clone())
+                    } else {
+                        None
+                    }
                 })
-                .unwrap_or(uuid::Uuid::new_v4().to_string());
+                .unwrap_or(Uuid::new_v4().to_string());
 
             let mut file_path = out.clone();
             file_path.push(content_location);
@@ -232,7 +242,7 @@ fn decode(
 
         error?;
     } else {
-        out.push(uuid::Uuid::new_v4().to_string());
+        out.push(Uuid::new_v4().to_string());
         write_file(&out, &*message.body)?;
     };
 
@@ -240,7 +250,8 @@ fn decode(
 }
 
 fn encode_to_file(args: EncodeArgs) {
-    const MIME_ERROR_MESSAGE: &str = "Couldn't determine content type from provided file";
+    const MIME_ERROR_MESSAGE: &str =
+        "Couldn't determine content type from provided file";
 
     if !args.file.is_file() {
         panic!("{:?}: file not found", args.file);
@@ -279,7 +290,7 @@ fn encode_to_file(args: EncodeArgs) {
 
     message.headers.insert(
         MmsHeader::XMmsTransactionId,
-        uuid::Uuid::new_v4().to_string().into(),
+        Uuid::new_v4().to_string().into(),
     );
 
     message
@@ -339,10 +350,12 @@ fn fetch(args: FetchArgs) {
 
     let message_url = body.x_mms_content_location().unwrap();
 
-    let mut client = HttpClient::builder().redirect_policy(isahc::config::RedirectPolicy::Follow);
+    let mut client = HttpClient::builder()
+        .redirect_policy(isahc::config::RedirectPolicy::Follow);
 
     if let Some(interface) = args.netargs.interface {
-        client = client.interface(isahc::config::NetworkInterface::name(interface));
+        client =
+            client.interface(isahc::config::NetworkInterface::name(interface));
     }
 
     let proto = if args.netargs.ipv6 {

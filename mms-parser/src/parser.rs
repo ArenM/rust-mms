@@ -59,7 +59,7 @@ pub fn parse_quoted_string(d: &[u8]) -> IResult<&[u8], String> {
     let (d, v) = take_till1(|c| c == 0)(d)?;
     let (d, _) = opt(tag("\u{0}"))(d)?;
 
-    Ok((d, unsafe { String::from_utf8_unchecked(v.to_vec()) }))
+    Ok((d, String::from_utf8_lossy(v).to_string()))
 }
 
 pub fn parse_short_integer(d: &[u8]) -> IResult<&[u8], u8> {
