@@ -16,6 +16,7 @@ use std::{
 
 #[macro_use]
 extern crate anyhow;
+use anyhow::{Context, Result};
 
 use isahc::{prelude::*, HttpClient};
 use structopt::StructOpt;
@@ -75,7 +76,9 @@ struct DecodeArgs {
     /// MMS Message to decode
     #[structopt(name = "File", parse(from_os_str))]
     file: PathBuf,
-    /// Directory to save message data to
+    /// Directory to save message data in
+    ///
+    /// A subdirectory with the id of the message will be created
     #[structopt(name = "Output", parse(from_os_str))]
     out: PathBuf,
 }
@@ -87,16 +90,15 @@ struct FetchArgs {
     /// A file containing the mms notification.
     ///
     /// This will usually be created using `mmcli -s <Message ID>
-    /// --create-file-with-data=<Notification>` see `man mmcli` or `mmcli --help` for more
-    /// information
+    /// --create-file-with-data=<Notification>` see `man mmcli` or `mmcli
+    /// --help` for more information
     #[structopt(name = "Notification", parse(from_os_str))]
     file: PathBuf,
-    /// The file to store the downloaded mms message in
+    /// The directory to store the downloaded data in
+    ///
+    /// A subdirectory with the id of the message will be created
     #[structopt(name = "Output", parse(from_os_str))]
     output: PathBuf,
-    /// Save the response from the server to a file, very useful for debugging
-    #[structopt(name = "Response", parse(from_os_str))]
-    response: Option<PathBuf>,
 }
 
 #[derive(StructOpt, Debug)]
@@ -119,7 +121,7 @@ fn main() -> anyhow::Result<()> {
     let args = AppArgs::from_args();
 
     match args.cmd {
-        Command::Fetch(args) => fetch(args),
+        Command::Fetch(args) => fetch(args)?,
         Command::Cat(args) => cat(args),
         Command::Decode(args) => command_decode(args)?,
         Command::Encode(args) => encode_to_file(args),
@@ -133,8 +135,8 @@ fn cat(args: CatArgs) {
     let data = read_file(&args.file).expect("Could not read data file");
 
     // X-Mms-Message-Type must always be the first header of any mms pdu we can
-    // use this to tell wether the provided data is a mms pdu, or a wap pdu
-    // the binay value for X-Mms-Message-Type is 0x0C
+    // use this to tell weather the provided data is a mms pdu, or a wap pdu
+    // the binary value for X-Mms-Message-Type is 0x0C
     match data[0] {
         0x8C => {
             println!("Mms Data");
@@ -173,7 +175,7 @@ fn command_decode(args: DecodeArgs) -> anyhow::Result<()> {
     let data = read_file(&args.file).expect("Could not read data file");
 
     if data[0] != 0x8C {
-        panic!("Unknown data type, please provide a mms pdu");
+        bail!("Unknown data type, please provide a mms pdu");
     }
 
     let (_remainder, message) =
@@ -188,14 +190,7 @@ fn command_decode(args: DecodeArgs) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    decode(&message, args.out)
-}
-
-// ) -> Result<(), Box<dyn std::error::Error>> {
-fn decode(
-    message: &mms_parser::types::VndWapMmsMessage,
-    mut out: PathBuf,
-) -> anyhow::Result<()> {
+    let mut out = args.out.clone();
     out.push(message.message_id().unwrap_or(&Uuid::new_v4().to_string()));
 
     // TODO: check for file conflicts instead of message id conflicts
@@ -206,6 +201,13 @@ fn decode(
 
     DirBuilder::new().create(&out)?;
 
+    save_body(&message, out)
+}
+
+fn save_body(
+    message: &mms_parser::types::VndWapMmsMessage,
+    mut out: PathBuf,
+) -> anyhow::Result<()> {
     use MessageHeader::ContentLocation;
     if message.has_multipart_body() {
         let body = mms_parser::parse_multipart_body(&message.body)
@@ -218,7 +220,7 @@ fn decode(
             .1;
         let mut error = Ok(());
 
-        body.iter().for_each(|item| {
+        for item in body {
             let content_location = item
                 .headers
                 .iter()
@@ -234,15 +236,20 @@ fn decode(
             let mut file_path = out.clone();
             file_path.push(content_location);
 
-            match write_file(&file_path, &*item.body) {
-                Err(e) => error = Err(e),
-                _ => {}
-            };
-        });
+            error = error.or(write_file(&file_path, &*item.body))
+        }
 
         error?;
     } else {
-        out.push(Uuid::new_v4().to_string());
+        let content_type = if let Some(c) = message.content_type() {
+            c
+        } else {
+            // If there's no content-type then there's no body
+            return Ok(());
+        };
+
+        out.push("Unnamed-1");
+        out.set_extension(mime_db::extension(content_type).unwrap_or("bin"));
         write_file(&out, &*message.body)?;
     };
 
@@ -280,6 +287,7 @@ fn encode_to_file(args: EncodeArgs) {
     } else if let Some(to) = args.unchecked_to {
         to
     } else {
+        // this case would most likely be a bug in structopt
         panic!("Either args.to, or args.unchecked to must have a value");
     };
 
@@ -333,22 +341,39 @@ fn encode_to_file(args: EncodeArgs) {
         .expect("Unable to save message to output");
 }
 
-fn fetch(args: FetchArgs) {
-    if args.output.exists() {
-        panic!("Please provide an output file which doesn't exist");
+fn fetch(args: FetchArgs) -> Result<()> {
+    if !args.output.is_dir() {
+        bail!("Output must be a directory that exists");
     }
 
-    if let Some(ref resp) = args.response {
-        if resp.exists() {
-            panic!("Please provide a response file which doesn't exist");
-        }
-    }
-    let data = read_file(&args.file).unwrap();
+    let data = read_file(&args.file).context("Notification File")?;
 
     let (_, parsed) = parse_wap_push(&data).unwrap();
-    let body = parsed.parse_body().unwrap();
+    let body = parsed
+        .parse_body()
+        .ok_or(anyhow!("Failed to parse message notification"))?;
 
-    let message_url = body.x_mms_content_location().unwrap();
+    let mut output = args.output.clone();
+    output.push(body.x_mms_transaction_id().ok_or(
+        anyhow!("Invalid message notification").context(
+            "Message notifications must have a X-Mms-Transaction-ID field",
+        ),
+    )?);
+
+    if output.exists() {
+        bail!(
+            "Files for a message with the same id already exist, if you would \
+            like to overwrite them you can remove {:?}",
+            output
+        );
+    }
+
+    DirBuilder::new().create(&output)?;
+
+    let message_url = body.x_mms_content_location().ok_or(
+        anyhow!("Invalid MMs notification. Message notification must contain a content-location field.",
+        ),
+    )?;
 
     let mut client = HttpClient::builder()
         .redirect_policy(isahc::config::RedirectPolicy::Follow);
@@ -366,51 +391,46 @@ fn fetch(args: FetchArgs) {
         isahc::config::IpVersion::Any
     };
 
-    client = client.ip_version(proto);
-
-    let client = client.build().unwrap();
+    let client = client.ip_version(proto).build()?;
 
     let response: Vec<u8> = {
-        let mut responce = client.get(message_url).unwrap();
+        let mut responce = client.get(message_url)?;
+
+        let mut buffer = Vec::new();
+        responce.body_mut().read_to_end(&mut buffer)?;
+
+        let mut o = output.clone();
+        o.push("m-retrieve-conf.bin");
+        write_file(&o, &*buffer)
+            .context("Could not save response from server")?;
+
         if !responce.status().is_success() {
-            panic!(
-                "Recieved error while trying to fetch message: {:#?}",
+            bail!(
+                "Received error while trying to fetch message: {:#?}",
                 responce
             );
         }
-        let mut buffer = Vec::new();
-        responce.body_mut().read_to_end(&mut buffer).unwrap();
+
         buffer
     };
 
-    let body = match parse_mms_pdu(&*response) {
-        Ok((_, mut parsed)) => {
-            let body = parsed.body;
-            parsed.body = vec![];
-            println!("Message Response Headers: {:#?}", parsed);
+    // TODO: Depends on https://github.com/Geal/nom/issues/1254
+    let (_remainder, parsed) = parse_mms_pdu(&*response).unwrap();
+    // .context("Could not parse response from server")?;
 
-            if let Some(response_location) = args.response {
-                // TODO: We should probably continue and print instead of failing and printing an
-                // error
-                write_file(&response_location, &*response)
-                    .expect("Unable to save the response from the server");
-            }
+    println!("Message Response Headers: {:#?}", parsed.headers);
 
-            body
-        }
-        Err(err) => {
-            println!("{:?}", err);
-            println!("WARNING: could not parse response from server, saving response anyway");
-            response
-        }
-    };
-
-    write_file(&args.output, &*body).unwrap();
+    save_body(&parsed, output)?;
+    Ok(())
 }
 
-fn write_file(path: &PathBuf, data: &[u8]) -> std::io::Result<()> {
-    let mut file = File::create(path)?;
-    file.write_all(data)?;
+fn write_file(path: &PathBuf, data: &[u8]) -> Result<()> {
+    let mut file = File::create(path).with_context(|| {
+        anyhow!("Could not create file to write: {:?}", path)
+    })?;
+
+    file.write_all(data)
+        .with_context(|| anyhow!("Could not write data to file: {:?}", path))?;
 
     Ok(())
 }
