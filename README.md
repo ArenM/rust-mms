@@ -55,8 +55,12 @@ See `mmsutil fetch --help` for more information, and Troubleshooting / Dns
 queiries.
 
 ## Sending Messages
-Sending messages is still a work in progress however if you can get any useful
-errors I'd like to know.
+To send a message you'll need to a `smil` display section. This will be generated
+in the near future. It is probably easiest to copy one from a message you've
+received and decoded, and adapt it to the message you're sending.
+
+The `smil` section should be the first file specified to the `--file` option, after
+that specify any content files you'd like to send, such as text or images.
 
 Messages can be encoded using `mmsutil encode` see `mmsutil encode --help` for
 more information about encoding messages.

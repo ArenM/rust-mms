@@ -1,7 +1,9 @@
 // TODO: This file has a tarible name, all of its contents should probably be
 // moved to lib.rs or the parser module
-use crate::parser::*;
-use crate::types::mms_header::{MmsHeader, MmsHeaderValue};
+use crate::{
+    parser::*,
+    types::mms_header::{MmsHeader, MmsHeaderValue},
+};
 
 use crate::MultiMap;
 use nom::{bytes::complete::take, IResult};
@@ -31,7 +33,7 @@ pub(crate) fn take_field(d: &[u8]) -> IResult<&[u8], &[u8]> {
         0..=30 => take(first_byte + 1)(d),
         31 => {
             let (pu, len) = uintvar(&d[1..])?;
-            take(len + (d.len() as u64 - pu.len() as u64))(d)
+            take(len + (d.len() - pu.len()) as u64)(d)
         }
         32..=127 => take_text_string(d),
         128..=255 => take(1u8)(d),
@@ -82,7 +84,10 @@ pub fn parse_mms_pdu(d: &[u8]) -> IResult<&[u8], crate::types::VndWapMmsMessage>
     let (d, split) = split_header_fields(d)?;
 
     let mut headers = parse_header_fields(&split);
-    let body = match headers.remove(&MmsHeader::ImplicitBody).unwrap_or(vec![].into()) {
+    let body = match headers
+        .remove(&MmsHeader::ImplicitBody)
+        .unwrap_or(vec![].into())
+    {
         MmsHeaderValue::Bytes(bytes) => bytes,
         _ => vec![],
     };
@@ -92,7 +97,10 @@ pub fn parse_mms_pdu(d: &[u8]) -> IResult<&[u8], crate::types::VndWapMmsMessage>
 
 pub fn parse_header_fields_with_errors<'a>(
     fields: &'a Vec<(MmsHeader, Vec<u8>)>,
-) -> MultiMap<MmsHeader, Result<MmsHeaderValue, nom::Err<nom::error::Error<&'a [u8]>>>> {
+) -> MultiMap<
+    MmsHeader,
+    Result<MmsHeaderValue, nom::Err<nom::error::Error<&'a [u8]>>>,
+> {
     fields
         .iter()
         .map(|i| {

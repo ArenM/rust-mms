@@ -65,15 +65,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .headers
         .insert(MmsHeader::From, format!("+{}/TYPE=PLMN", from).into());
 
-    message
-        .headers
-        .insert(MmsHeader::ContentType, mime_type.into());
-
     let mut file = File::open(body_path)?;
     file.read_to_end(&mut message.body)?;
     // println!("Generated Messag: {:#?}", message);
 
-    let encoded = encode_mms_message(message);
+    let encoded = encode_mms_message(message.headers, (mime_type, message.body));
 
     let mut out = File::create(save)?;
     out.write_all(&encoded)?;

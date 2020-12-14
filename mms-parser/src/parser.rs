@@ -1,4 +1,3 @@
-// TODO: This will go away when parsers for all / most headers are implemented
 mod content_type;
 mod message_header;
 pub(crate) mod mms_header;
@@ -17,22 +16,20 @@ use nom::{
     IResult,
 };
 
-// TODO: The return slice should end with a 0 byte
 pub fn take_text_string(d: &[u8]) -> IResult<&[u8], &[u8]> {
-    let (d, val) = take_till(|c| c == 0)(d)?;
-    let (d, _) = tag("\u{0}")(d)?;
-    Ok((d, val))
+    let (dc, val) = take_till(|c| c == 0)(d)?;
+    let (dc, _) = tag("\u{0}")(dc)?;
+    Ok((dc, &d[..val.len() + 1]))
 }
 
 pub fn parse_text_string(d: &[u8]) -> IResult<&[u8], String> {
     let (d, val) = take_till1(|c| c == '\u{0}' as u8)(d)?;
 
-    // TODO: if take_text_string ends with a 0 byte, then this can just tag 0
-    let (d, _) = opt(tag("\u{0}"))(d)?;
+    let (d, _) = opt(tag("\x00"))(d)?;
 
     if val[0] >= 128 {
         return Err(nom::Err::Error(nom::error::Error::new(
-            &[],
+            d,
             nom::error::ErrorKind::Satisfy,
         )));
     }
@@ -68,7 +65,7 @@ pub fn parse_short_integer(d: &[u8]) -> IResult<&[u8], u8> {
 
     if bit & 0x80 == 0 {
         return Err(nom::Err::Error(nom::error::Error::new(
-            &[],
+            d,
             nom::error::ErrorKind::Satisfy,
         )));
     }
@@ -141,6 +138,15 @@ pub fn parse_encoded_string_value(d: &[u8]) -> IResult<&[u8], String> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn take_basic_text_string() {
+        let input = "asdf\x00not included".as_bytes();
+        let (remainder, val) = take_text_string(input).unwrap();
+
+        assert_eq!(val, "asdf\x00".as_bytes());
+        assert_eq!(remainder, "not included".as_bytes());
+    }
 
     #[test]
     fn simple_text_string() {

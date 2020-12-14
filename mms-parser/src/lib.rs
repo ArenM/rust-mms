@@ -24,7 +24,9 @@ use nom::{
     IResult,
 };
 
-pub(crate) use ordered_multimap::ListOrderedMultimap as MultiMap;
+// TODO: This is public for creating message headers for encoding, it may make
+// more sense to provide encoding builders
+pub use ordered_multimap::ListOrderedMultimap as MultiMap;
 
 pub const MMS_VERSION: u8 = 18;
 

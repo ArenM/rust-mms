@@ -1,10 +1,9 @@
 use mms_parser::{
-    encoder::encode_mms_message,
+    encoder::{encode_mms_message, multipart::MultiPartEncoder},
     parse_mms_pdu, parse_wap_push,
     types::{
         message_header::MessageHeader,
-        mms_header::{FromField, MessageTypeField, MmsHeader, MmsHeaderValue},
-        VndWapMmsMessage,
+        mms_header::{FromField, MessageTypeField, MmsHeader},
     },
 };
 
@@ -56,12 +55,43 @@ struct EncodeArgs {
     /// Subject of the message
     #[structopt(long)]
     subject: Option<String>,
-    /// File to send
-    #[structopt(name = "File", parse(from_os_str))]
-    file: PathBuf,
+    /// Files to send. If specified multiple times, then send a multipart message where the first
+    /// file specified is a smil display setction
+    #[structopt(
+        short = "p",
+        long = "file",
+        name = "File",
+        parse(from_os_str),
+        required = true
+    )]
+    files: Vec<PathBuf>,
     /// File to save message to, must be sent using curl
     #[structopt(name = "Output", parse(from_os_str))]
     output: PathBuf,
+}
+
+impl EncodeArgs {
+    fn to(&self) -> Result<String> {
+        let to = if let Some(to) = self.to {
+            format!("+{}/TYPE=PLMN", to)
+        } else if let Some(ref to) = self.unchecked_to {
+            to.clone()
+        } else {
+            unreachable!(
+                "Either args.to, or args.unchecked to must have a value, \
+                this is a bug, please try to reproduce it and file a bug report"
+                );
+        };
+        Ok(to)
+    }
+
+    fn from(&self) -> FromField {
+        if let Some(from) = self.from {
+            FromField::Address(format!("+{}/TYPE=PLMN", from))
+        } else {
+            FromField::InsertAddress
+        }
+    }
 }
 
 #[derive(StructOpt, Debug)]
@@ -124,14 +154,14 @@ fn main() -> anyhow::Result<()> {
         Command::Fetch(args) => fetch(args)?,
         Command::Cat(args) => cat(args),
         Command::Decode(args) => command_decode(args)?,
-        Command::Encode(args) => encode_to_file(args),
+        Command::Encode(args) => encode_to_file(args)?,
     }
 
     Ok(())
 }
 
 fn cat(args: CatArgs) {
-    pager::Pager::with_default_pager("less").setup();
+    // pager::Pager::with_default_pager("less").setup();
     let data = read_file(&args.file).expect("Could not read data file");
 
     // X-Mms-Message-Type must always be the first header of any mms pdu we can
@@ -256,89 +286,127 @@ fn save_body(
     Ok(())
 }
 
-fn encode_to_file(args: EncodeArgs) {
-    const MIME_ERROR_MESSAGE: &str =
-        "Couldn't determine content type from provided file";
+fn mime_from_file(file: &PathBuf) -> Result<mime::Mime> {
+    let error_message =
+        format!("Couldn't determine content type for file {:?}", file);
 
-    if !args.file.is_file() {
-        panic!("{:?}: file not found", args.file);
+    let extension: &str = file
+        .extension()
+        .with_context(|| error_message.clone())?
+        .to_str()
+        .with_context(|| error_message.clone())?;
+
+    // TODO: This is really hacky because I get the wrong content type back from mime_db
+    if extension == "smil" {
+        Ok("application/smil".parse()?)
+    } else {
+        mime_db::lookup(extension)
+            .with_context(|| error_message.clone())?
+            .parse()
+            .with_context(|| error_message.clone())
     }
+}
+
+fn encode_to_file(args: EncodeArgs) -> Result<()> {
+    use MessageTypeField::MSendReq;
+
+    println!("{:#?}", args);
 
     if args.output.exists() {
-        panic!("Please provide an output file which doesn't exist");
+        bail!("Please provide an output file which doesn't exist");
     }
 
-    let extension: &str = &args
-        .file
-        .extension()
-        .expect(MIME_ERROR_MESSAGE)
-        .to_str()
-        .expect(MIME_ERROR_MESSAGE);
+    let mut headers = mms_parser::MultiMap::new();
 
-    let mime_type: mime::Mime = mime_db::lookup(extension)
-        .expect(MIME_ERROR_MESSAGE)
-        .parse()
-        .expect(MIME_ERROR_MESSAGE);
+    let message_id = Uuid::new_v4().to_string();
 
-    let mut message = VndWapMmsMessage::empty();
-
-    let to = if let Some(to) = args.to {
-        format!("+{}/TYPE=PLMN", to)
-    } else if let Some(to) = args.unchecked_to {
-        to
-    } else {
-        // this case would most likely be a bug in structopt
-        panic!("Either args.to, or args.unchecked to must have a value");
-    };
-
-    message.headers.insert(
-        MmsHeader::XMmsMessageType,
-        MmsHeaderValue::MessageTypeField(MessageTypeField::MSendReq),
-    );
-
-    message.headers.insert(
-        MmsHeader::XMmsTransactionId,
-        Uuid::new_v4().to_string().into(),
-    );
-
-    message
-        .headers
-        .insert(MmsHeader::XMmsMMSVersion, mms_parser::MMS_VERSION.into());
-
-    message
-        .headers
-        .insert(MmsHeader::XMmsDeliveryReport, true.into());
-
-    message.headers.insert(MmsHeader::To, to.into());
-
-    if let Some(from) = args.from {
-        message.headers.insert(
-            MmsHeader::From,
-            FromField::Address(format!("+{}/TYPE=PLMN", from)).into(),
-        );
-    } else {
-        message
-            .headers
-            .insert(MmsHeader::From, FromField::InsertAddress.into());
-    }
+    headers.insert(MmsHeader::XMmsMessageType, MSendReq.into());
+    headers.insert(MmsHeader::XMmsTransactionId, message_id.into());
+    headers.insert(MmsHeader::XMmsMMSVersion, mms_parser::MMS_VERSION.into());
+    headers.insert(MmsHeader::XMmsDeliveryReport, true.into());
+    headers.insert(MmsHeader::To, args.to()?.into());
+    headers.insert(MmsHeader::From, args.from().into());
 
     if let Some(subject) = args.subject {
-        message.headers.insert(MmsHeader::Subject, subject.into());
+        headers.insert(MmsHeader::Subject, subject.into());
     }
 
-    message
-        .headers
-        .insert(MmsHeader::ContentType, mime_type.into());
+    println!("Generated Message Headers: {:#?}", headers);
 
-    println!("Generated Message Headers: {:#?}", message.headers);
+    // TODO: this should generate a smil section
+    let encoded = if args.files.len() == 1 {
+        let mut body = Vec::new();
 
-    let mut file = File::open(args.file).expect("Unable to open file to send");
-    file.read_to_end(&mut message.body)
-        .expect("Error reading file");
+        let file_name = args.files.first().unwrap();
+        let mime_type = mime_from_file(file_name)?;
 
-    let encoded = encode_mms_message(message);
+        let mut file =
+            File::open(file_name).context("Unable to open file to send")?;
+        file.read_to_end(&mut body).context("Error reading file")?;
+
+        encode_mms_message(headers, (mime_type, body))
+    } else {
+        let body = build_related_body(&*args.files)?;
+        encode_mms_message(headers, body)
+    };
+
     write_file(&args.output, &*encoded)
-        .expect("Unable to save message to output");
+        .context("Unable to save message to output")?;
+    Ok(())
+}
+
+fn file_id(file: &PathBuf) -> Result<String> {
+    let id = file
+        .file_stem()
+        .ok_or(anyhow!("Cannot get file name of {:?}", file))?
+        .to_string_lossy()
+        .to_string();
+    Ok(id)
+}
+
+fn file_name(file: &PathBuf) -> Result<String> {
+    let location = file
+        .file_name()
+        .ok_or(anyhow!("Cannot get file name of {:?}"))?
+        .to_string_lossy()
+        .to_string();
+    Ok(location)
+}
+
+fn build_related_body(files: &[PathBuf]) -> Result<MultiPartEncoder> {
+    use mms_parser::encoder::{multipart, multipart::RelatedItem};
+
+    let mut body = multipart::EncoderBuilder::new();
+
+    for file in files {
+        // TODO: mime::Mime needs a method to add a param. I may have to fork
+        // the crate. until then I'm using a very hacky method of converting the
+        // of converting the mime to a string, adding params, and parsing it
+        // again.
+        let mut mime = mime_from_file(&file)
+            .with_context(|| anyhow!("{:?}", file))?
+            .to_string();
+
+        let data = read_file(&file).with_context(|| anyhow!("{:?}", file))?;
+        let id = file_id(&file)?;
+        let location = file_name(&file)?;
+
+        mime.push_str(&*format!("; name=\"{}\"", location));
+        let mime = mime.parse()?;
+
+        let item = RelatedItem::new(
+            mime,
+            data,
+            format!("<{}>", id),
+            location.to_string(),
+        );
+
+        body.part(item);
+    }
+
+    Ok(body
+        .build()
+        .ok_or(anyhow!("Failed to build multipart encoder"))?)
 }
 
 fn fetch(args: FetchArgs) -> Result<()> {
@@ -435,10 +503,11 @@ fn write_file(path: &PathBuf, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn read_file(path: &PathBuf) -> std::io::Result<Vec<u8>> {
-    let mut file = File::open(path)?;
+fn read_file(path: &PathBuf) -> Result<Vec<u8>> {
+    let mut file = File::open(path).with_context(|| anyhow!("{:?}", path))?;
     let mut buffer: Vec<u8> = Vec::new();
 
-    file.read_to_end(&mut buffer)?;
+    file.read_to_end(&mut buffer)
+        .with_context(|| anyhow!("{:?}", path))?;
     Ok(buffer)
 }
