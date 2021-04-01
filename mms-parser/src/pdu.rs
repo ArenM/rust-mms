@@ -32,7 +32,9 @@ pub(crate) fn take_field(d: &[u8]) -> IResult<&[u8], &[u8]> {
     let (d, header_value) = match first_byte {
         0..=30 => take(first_byte + 1)(d),
         31 => {
-            let (pu, len) = uintvar(&d[1..])?;
+            let (pu, _) = take(1u8)(d)?;
+            let (pu, len) = uintvar(pu)?;
+
             take(len + (d.len() - pu.len()) as u64)(d)
         }
         32..=127 => take_text_string(d),
@@ -80,7 +82,11 @@ pub fn parse_header_fields(
         .collect()
 }
 
-pub fn parse_mms_pdu(d: &[u8]) -> IResult<&[u8], crate::types::VndWapMmsMessage> {
+// TODO: Return a parse error of some sort that can print a user readable error
+// see https://github.com/Geal/nom/blob/master/examples/json.rs for an example
+pub fn parse_mms_pdu(
+    d: &[u8],
+) -> IResult<&[u8], crate::types::VndWapMmsMessage> {
     let (d, split) = split_header_fields(d)?;
 
     let mut headers = parse_header_fields(&split);

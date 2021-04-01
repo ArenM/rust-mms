@@ -104,8 +104,8 @@ macro_rules! header_fields {
 // TODO: It may be necessary to have a unknown field for encoding messages
 header_fields! {
     MmsHeader,
-    // (Bcc);
-    // (Cc);
+    (Bcc, bcc, String, 0x01);
+    (Cc, cc, String, 0x02);
     // (Content);
     (ContentType, content_type, ContentType, 0x04);
     (Date, date, LongUint, 0x05);

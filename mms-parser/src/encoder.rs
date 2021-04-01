@@ -7,13 +7,189 @@ use multipart::EncodableBody;
 
 use crate::{
     types::{
-        mms_header::{MmsHeader, MmsHeaderValue},
+        mms_header::{self as mms_header_types, MmsHeader, MmsHeaderValue},
         MessageHeader,
     },
     MultiMap,
 };
 
-use std::convert::TryFrom;
+use std::{
+    convert::TryFrom,
+    fs::File,
+    io::Read,
+    ops::{Deref, DerefMut},
+    path::Path,
+};
+
+pub struct MSendReq {
+    headers: MultiMap<MmsHeader, MmsHeaderValue>,
+    body: multipart::EncoderBuilder<multipart::RelatedBodyPart>,
+}
+
+impl MSendReq {
+    pub fn new() -> Self {
+        Self {
+            headers: MultiMap::new(),
+            body: multipart::EncoderBuilder::new(),
+        }
+    }
+    fn finalize_headers(&mut self) {
+        use mms_header_types::MessageTypeField;
+        use MmsHeader::*;
+
+        let mut headers = vec![
+            (XMmsMessageType, MessageTypeField::MSendReq.into()),
+            (
+                XMmsTransactionId,
+                self.headers
+                    .remove(&XMmsTransactionId)
+                    // TODO: This may be dangerous behaviour, there is nowhere the id can be
+                    // easily returned
+                    .unwrap_or(uuid::Uuid::new_v4().to_string().into()),
+            ),
+            (XMmsMMSVersion, crate::MMS_VERSION.into()),
+        ];
+
+        // TODO: This should check for dupliate headers, espicilly of the headers listed above
+        let mut user_headers: Vec<(MmsHeader, MmsHeaderValue)> = self
+            .headers
+            .drain_pairs()
+            .map(|(key, values)| {
+                // TODO: Only include specifc keys and limit most of them to
+                // only one value per key
+                values
+                    .map(|v| (key.clone(), v))
+                    .collect::<Vec<(MmsHeader, MmsHeaderValue)>>()
+            })
+            .flatten()
+            .collect();
+
+        headers.append(&mut user_headers);
+        let headers: MultiMap<_, _> = headers.drain(..).collect();
+
+        self.headers = headers;
+    }
+    // TODO: Most of these functions should return an error if there is already a value set
+    pub fn transaction_id(&mut self, id: String) {
+        self.insert(MmsHeader::XMmsTransactionId, id.into());
+    }
+    pub fn from(&mut self, addr: mms_header_types::FromField) {
+        self.insert(MmsHeader::From, addr.into());
+    }
+    // TODO: Replace Strings in to, cc and bcc with an address enum of some sort
+    pub fn to(&mut self, addr: String) {
+        self.insert(MmsHeader::To, addr.into());
+    }
+    pub fn cc(&mut self, addr: String) {
+        self.insert(MmsHeader::Cc, addr.into());
+    }
+    pub fn bcc(&mut self, addr: String) {
+        self.insert(MmsHeader::Bcc, addr.into());
+    }
+    pub fn subject(&mut self, subject: String) {
+        self.insert(MmsHeader::Subject, subject.into());
+    }
+    pub fn class(&mut self, class: mms_header_types::ClassIdentifier) {
+        self.insert(MmsHeader::XMmsMessageClass, class.into());
+    }
+    pub fn delivery_report(&mut self, report: bool) {
+        self.insert(MmsHeader::XMmsDeliveryReport, report.into());
+    }
+    pub fn read_report(&mut self, report: bool) {
+        self.insert(MmsHeader::XMmsReadReport, report.into());
+    }
+    // TODO: Proper error handling
+    pub fn body_part(&mut self, part: multipart::RelatedBodyPart) {
+        self.body.part(part)
+    }
+    pub fn body_file<P: AsRef<Path>>(&mut self, file: P) {
+        let file = file.as_ref();
+        let mut mime = mime_from_file(file).to_string();
+
+        let data = {
+            let mut file = File::open(file).unwrap();
+            let mut buffer: Vec<u8> = Vec::new();
+
+            file.read_to_end(&mut buffer).unwrap();
+            buffer
+        };
+        let id = file_id(&file);
+        let location = file_name(&file);
+
+        mime.push_str(&*format!("; name=\"{}\"", location));
+        let mime = mime.parse().unwrap();
+
+        let item = multipart::RelatedBodyPart::new(
+            mime,
+            data,
+            format!("<{}>", id),
+            location.to_string(),
+        );
+
+        self.body_part(item)
+    }
+    pub fn encode(mut self) -> Vec<u8> {
+        self.finalize_headers();
+        let complete_body = self.body.build().unwrap();
+        encode_mms_message(self.headers, complete_body)
+    }
+}
+
+fn mime_from_file<P: AsRef<Path>>(file: P) -> mime::Mime {
+    let file = file.as_ref();
+    let error_message =
+        |file| format!("Couldn't determine content type for file {:?}", file);
+
+    let extension: &str = file
+        .extension()
+        .expect(&*error_message(file))
+        .to_str()
+        .expect(&*error_message(file));
+
+    // TODO: This is really hacky because I get the wrong content type back from mime_db
+    if extension == "smil" {
+        "application/smil".parse().unwrap()
+    } else {
+        mime_db::lookup(extension)
+            .expect(&*error_message(file))
+            .parse()
+            .expect(&*error_message(file))
+    }
+}
+
+fn file_id<P: AsRef<Path>>(file: P) -> String {
+    let id = file
+        .as_ref()
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    id
+}
+
+fn file_name<P: AsRef<Path>>(file: P) -> String {
+    let location = file
+        .as_ref()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    location
+}
+
+impl Deref for MSendReq {
+    type Target = MultiMap<MmsHeader, MmsHeaderValue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.headers
+    }
+}
+
+impl DerefMut for MSendReq {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.headers
+    }
+}
 
 pub fn encode_mms_message(
     headers: MultiMap<MmsHeader, MmsHeaderValue>,

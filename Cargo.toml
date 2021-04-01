@@ -31,3 +31,9 @@ features = []
 version = "0.9.13"
 default-features = false
 features = []
+
+[dev-dependencies]
+assert_cmd = "1.0.2"
+assert_fs = "1.0.0"
+predicates = "1"
+tempfile = "3.1.0"

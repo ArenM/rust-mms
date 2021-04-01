@@ -9,7 +9,15 @@ pub trait EncodableBody {
 }
 
 pub trait Item: Into<MultiPartItem> {
+    // type SharedState;
+
     fn multipart_type(&self) -> mime::Mime;
+    fn fianilize_encoder(_: &mut EncoderBuilder<Self>) {}
+    // fn initalize_shared_state() -> Self::SharedState;
+}
+
+pub trait LayoutItem: Item {
+    fn generate_layout(enc: &mut EncoderBuilder<Self>);
 }
 
 impl EncodableBody for (mime::Mime, Vec<u8>) {
@@ -24,12 +32,18 @@ impl EncodableBody for (mime::Mime, Vec<u8>) {
 
 pub struct EncoderBuilder<I: Item> {
     parts: Vec<I>,
+    layout: Option<I>,
+    // item_state: I::SharedState,
 }
 
 impl<I: Item> EncoderBuilder<I> {
     /// Create a new empty builder
     pub fn new() -> Self {
-        Self { parts: Vec::new() }
+        Self {
+            parts: Vec::new(),
+            layout: None,
+            // item_state: I::initalize_shared_state(),
+        }
     }
 
     /// Replace the currently present parts, if any, with the provided ones
@@ -45,12 +59,17 @@ impl<I: Item> EncoderBuilder<I> {
 
     // TODO: Use Result instead of Option
     /// Finalize builder into a type that can be encoded
-    pub fn build(self) -> Option<MultiPartEncoder> {
-        let mut parts = self.parts;
-        let content_type = parts.first().unwrap().multipart_type();
+    pub fn build(mut self) -> Option<MultiPartEncoder> {
+        I::fianilize_encoder(&mut self);
+
+        if let Some(part) = self.layout {
+            self.parts.insert(0, part);
+        }
+
+        let content_type = self.parts.first().unwrap().multipart_type();
 
         Some(MultiPartEncoder {
-            parts: parts.drain(..).map(|i| i.into()).collect(),
+            parts: self.parts.drain(..).map(|i| i.into()).collect(),
             content_type,
         })
     }
@@ -78,12 +97,12 @@ impl Item for MixedItem {
     }
 }
 
-pub struct RelatedItem {
+pub struct RelatedBodyPart {
     item: MultiPartItem,
     id: String,
 }
 
-impl RelatedItem {
+impl RelatedBodyPart {
     pub fn new(
         content_type: Mime,
         body: Vec<u8>,
@@ -103,13 +122,13 @@ impl RelatedItem {
     }
 }
 
-impl Into<MultiPartItem> for RelatedItem {
+impl Into<MultiPartItem> for RelatedBodyPart {
     fn into(self) -> MultiPartItem {
         self.item
     }
 }
 
-impl Item for RelatedItem {
+impl Item for RelatedBodyPart {
     fn multipart_type(&self) -> mime::Mime {
         format!(
             "application/vnd.wap.multipart.related; start=\"{}\"; type=\"{}\"",
@@ -118,6 +137,23 @@ impl Item for RelatedItem {
         )
         .parse()
         .unwrap()
+    }
+
+    fn fianilize_encoder(e: &mut EncoderBuilder<RelatedBodyPart>) {
+        // TODO: This check should be handled by the EncoderBuilder
+        if e.layout.is_some() {
+            // Ther's no return type here so rust's usual patterns for early returns don't fit well
+            return;
+        }
+
+        let blank_layout_part = RelatedBodyPart::new(
+            "application/smil".to_string().parse().unwrap(),
+            "<smil><head><layout><root-layout width=\"818px\" height=\"480px\"/></layout></head><body><par dur=\"5000ms\"/></body></smil>".as_bytes().to_vec(),
+            "<smil>".to_string(),
+            "smil.xml".to_string(),
+        );
+
+        e.layout = Some(blank_layout_part);
     }
 }
 

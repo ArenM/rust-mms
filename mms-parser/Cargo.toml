@@ -13,13 +13,17 @@ derivative = "2.1.1"
 log = "0.4.11"
 mime = "0.3.16"
 ordered-multimap = "0.3.1"
+mime-db = "1.1.0"
 
 [dependencies.nom]
 version = "6.0.1"
 default-features = false
 features = ["std"]
 
+[dependencies.uuid]
+version = "0.8.1"
+features = ["v4"]
+
 [dev-dependencies]
 pico-args = "0.3.4"
 promptly = "0.3.0"
-mime-db = "1.1.0"

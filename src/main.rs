@@ -1,10 +1,7 @@
 use mms_parser::{
-    encoder::{encode_mms_message, multipart::MultiPartEncoder},
+    encoder::MSendReq,
     parse_mms_pdu, parse_wap_push,
-    types::{
-        message_header::MessageHeader,
-        mms_header::{FromField, MessageTypeField, MmsHeader},
-    },
+    types::{message_header::MessageHeader, mms_header::FromField},
 };
 
 use std::{
@@ -167,37 +164,32 @@ fn cat(args: CatArgs) {
     // X-Mms-Message-Type must always be the first header of any mms pdu we can
     // use this to tell weather the provided data is a mms pdu, or a wap pdu
     // the binary value for X-Mms-Message-Type is 0x0C
-    match data[0] {
-        0x8C => {
-            println!("Mms Data");
+    if data[0] == 0x8C {
+        println!("Type: Mms Data");
 
-            let (_remainder, parsed) = parse_mms_pdu(&*data)
-                .expect("Unable to parse provided data file");
+        let (_remainder, parsed) =
+            parse_mms_pdu(&*data).expect("Unable to parse provided data file");
 
-            println!("Headers: {:#?}", parsed.headers);
+        println!("Headers: {:#?}", parsed.headers);
 
-            if parsed.body.len() > 0 {
-                if parsed.has_multipart_body() {
-                    let body = mms_parser::parse_multipart_body(&parsed.body)
-                        .unwrap()
-                        .1;
-                    println!("Body: {:#?}", body);
-                } else {
-                    let body = String::from_utf8_lossy(&parsed.body);
-                    println!("Body: {}", body);
-                }
+        if parsed.body.len() > 0 {
+            if parsed.has_multipart_body() {
+                let body =
+                    mms_parser::parse_multipart_body(&*parsed.body).unwrap().1;
+                println!("Body: {:#?}", body);
+            } else {
+                let body = String::from_utf8_lossy(&parsed.body);
+                println!("Body: {}", body);
             }
         }
-        _ => {
-            println!("Type: WAP Data");
+    } else {
+        println!("Type: WAP Data");
 
-            let (_, parsed) = parse_wap_push(&data).unwrap();
-            println!("Wap Push Headers: {:#?}", parsed);
+        let (_, parsed) = parse_wap_push(&data).unwrap();
+        println!("Wap Push Headers: {:#?}", parsed);
 
-            let body =
-                parsed.parse_body().expect("Unable to parse wap push body");
-            println!("Wap Push Body: {:#?}", body);
-        }
+        let body = parsed.parse_body().expect("Unable to parse wap push body");
+        println!("Wap Push Body: {:#?}", body);
     }
 }
 
@@ -221,7 +213,11 @@ fn command_decode(args: DecodeArgs) -> anyhow::Result<()> {
     }
 
     let mut out = args.out.clone();
-    out.push(message.message_id().unwrap_or(&Uuid::new_v4().to_string()));
+    out.push(
+        message
+            .x_mms_transaction_id()
+            .unwrap_or(&Uuid::new_v4().to_string()),
+    );
 
     // TODO: check for file conflicts instead of message id conflicts
     if out.exists() {
@@ -286,128 +282,44 @@ fn save_body(
     Ok(())
 }
 
-fn mime_from_file(file: &PathBuf) -> Result<mime::Mime> {
-    let error_message =
-        format!("Couldn't determine content type for file {:?}", file);
-
-    let extension: &str = file
-        .extension()
-        .with_context(|| error_message.clone())?
-        .to_str()
-        .with_context(|| error_message.clone())?;
-
-    // TODO: This is really hacky because I get the wrong content type back from mime_db
-    if extension == "smil" {
-        Ok("application/smil".parse()?)
-    } else {
-        mime_db::lookup(extension)
-            .with_context(|| error_message.clone())?
-            .parse()
-            .with_context(|| error_message.clone())
-    }
-}
-
 fn encode_to_file(args: EncodeArgs) -> Result<()> {
-    use MessageTypeField::MSendReq;
-
     println!("{:#?}", args);
 
     if args.output.exists() {
         bail!("Please provide an output file which doesn't exist");
     }
 
-    let mut headers = mms_parser::MultiMap::new();
+    let mut message = MSendReq::new();
+    message.to(args.to()?);
+    message.from(args.from());
+    args.subject.map(|subject| message.subject(subject));
 
-    let message_id = Uuid::new_v4().to_string();
-
-    headers.insert(MmsHeader::XMmsMessageType, MSendReq.into());
-    headers.insert(MmsHeader::XMmsTransactionId, message_id.into());
-    headers.insert(MmsHeader::XMmsMMSVersion, mms_parser::MMS_VERSION.into());
-    headers.insert(MmsHeader::XMmsDeliveryReport, true.into());
-    headers.insert(MmsHeader::To, args.to()?.into());
-    headers.insert(MmsHeader::From, args.from().into());
-
-    if let Some(subject) = args.subject {
-        headers.insert(MmsHeader::Subject, subject.into());
+    for file in args.files {
+        message.body_file(file);
     }
 
-    println!("Generated Message Headers: {:#?}", headers);
-
-    // TODO: this should generate a smil section
-    let encoded = if args.files.len() == 1 {
-        let mut body = Vec::new();
-
-        let file_name = args.files.first().unwrap();
-        let mime_type = mime_from_file(file_name)?;
-
-        let mut file =
-            File::open(file_name).context("Unable to open file to send")?;
-        file.read_to_end(&mut body).context("Error reading file")?;
-
-        encode_mms_message(headers, (mime_type, body))
-    } else {
-        let body = build_related_body(&*args.files)?;
-        encode_mms_message(headers, body)
-    };
-
-    write_file(&args.output, &*encoded)
+    write_file(&args.output, &*message.encode())
         .context("Unable to save message to output")?;
     Ok(())
 }
 
-fn file_id(file: &PathBuf) -> Result<String> {
-    let id = file
-        .file_stem()
-        .ok_or(anyhow!("Cannot get file name of {:?}", file))?
-        .to_string_lossy()
-        .to_string();
-    Ok(id)
-}
+// fn file_id(file: &PathBuf) -> Result<String> {
+//     let id = file
+//         .file_stem()
+//         .ok_or(anyhow!("Cannot get file name of {:?}", file))?
+//         .to_string_lossy()
+//         .to_string();
+//     Ok(id)
+// }
 
-fn file_name(file: &PathBuf) -> Result<String> {
-    let location = file
-        .file_name()
-        .ok_or(anyhow!("Cannot get file name of {:?}"))?
-        .to_string_lossy()
-        .to_string();
-    Ok(location)
-}
-
-fn build_related_body(files: &[PathBuf]) -> Result<MultiPartEncoder> {
-    use mms_parser::encoder::{multipart, multipart::RelatedItem};
-
-    let mut body = multipart::EncoderBuilder::new();
-
-    for file in files {
-        // TODO: mime::Mime needs a method to add a param. I may have to fork
-        // the crate. until then I'm using a very hacky method of converting the
-        // of converting the mime to a string, adding params, and parsing it
-        // again.
-        let mut mime = mime_from_file(&file)
-            .with_context(|| anyhow!("{:?}", file))?
-            .to_string();
-
-        let data = read_file(&file).with_context(|| anyhow!("{:?}", file))?;
-        let id = file_id(&file)?;
-        let location = file_name(&file)?;
-
-        mime.push_str(&*format!("; name=\"{}\"", location));
-        let mime = mime.parse()?;
-
-        let item = RelatedItem::new(
-            mime,
-            data,
-            format!("<{}>", id),
-            location.to_string(),
-        );
-
-        body.part(item);
-    }
-
-    Ok(body
-        .build()
-        .ok_or(anyhow!("Failed to build multipart encoder"))?)
-}
+// fn file_name(file: &PathBuf) -> Result<String> {
+//     let location = file
+//         .file_name()
+//         .ok_or(anyhow!("Cannot get file name of {:?}"))?
+//         .to_string_lossy()
+//         .to_string();
+//     Ok(location)
+// }
 
 fn fetch(args: FetchArgs) -> Result<()> {
     if !args.output.is_dir() {
